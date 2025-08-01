@@ -87,8 +87,8 @@ deploy:
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
-    - docker compose -f docker-compose-dual-node.yaml pull
-    - docker compose -f docker-compose-dual-node.yaml up -d
+    - docker-compose -f docker-compose-dual-node.yaml pull
+    - docker-compose -f docker-compose-dual-node.yaml up -d
   only:
     - main
   tags:
