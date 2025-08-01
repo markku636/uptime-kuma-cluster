@@ -94,3 +94,39 @@ deploy:
     - main
   tags:
     - Development.IISI_Banqiao.docker
+
+verify:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    # 1) 找出 compose 產生的 container IDs
+    - CONTAINERS=$(docker ps --filter "label=com.docker.compose.project=$(basename $CI_PROJECT_NAME)" --format "{{.ID}}")
+    - echo "等待服務變成 healthy ..."
+    # 2) 最長等 180 秒；只要有一個 unhealthy 就失敗
+    - |
+      TIMEOUT=180
+      START=$(date +%s)
+      while true; do
+        UNHEALTHY=0
+        for ID in $CONTAINERS; do
+          STATE=$(docker inspect -f '{{ .State.Health.Status }}' $ID || echo none)
+          if [ "$STATE" != "healthy" ]; then
+            UNHEALTHY=1
+            break
+          fi
+        done
+        if [ $UNHEALTHY -eq 0 ]; then
+          echo "所有服務均為 healthy"
+          break
+        fi
+        NOW=$(date +%s)
+        if [ $((NOW-START)) -gt $TIMEOUT ]; then
+          echo "⚠️  服務未在 ${TIMEOUT}s 內 Healthy，佈署失敗"; exit 1
+        fi
+        sleep 5
+      done
+  tags:
+    - Development.IISI_Banqiao.docker
+  allow_failure: false

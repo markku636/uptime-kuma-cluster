@@ -25,6 +25,12 @@ services:
     restart: unless-stopped
     networks:
       - kuma-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   uptime-kuma-node1:
     image: ${IMAGE}
@@ -50,6 +56,7 @@ services:
     depends_on:
       - mariadb
     restart: unless-stopped
+
     networks:
       - kuma-network
 
