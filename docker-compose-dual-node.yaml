@@ -1,5 +1,14 @@
 version: '3.8'
 
+volumes:
+  kuma-db:
+    name: kuma-db
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/volume/uptimekuma
+
 services:
   mariadb:
     image: mariadb:10
@@ -18,10 +27,11 @@ services:
       - kuma-network
 
   uptime-kuma-node1:
-    build:
-      context: .
-      dockerfile: docker/dockerfile
-      target: release
+    image: ${IMAGE}
+#    build:
+#      context: .
+#      dockerfile: docker/dockerfile
+#      target: release
     container_name: uptime-kuma-node1
     volumes:
       - ./data/node1:/app/data
@@ -44,13 +54,14 @@ services:
       - kuma-network
 
   uptime-kuma-node2:
-    build:
-      context: .
-      dockerfile: docker/dockerfile
-      target: release
+    image: ${IMAGE}
+#    build:
+#      context: .
+#      dockerfile: docker/dockerfile
+#      target: release
     container_name: uptime-kuma-node2
-    volumes:
-      - ./data/node2:/app/data
+#    volumes:
+#      - ./data/node2:/app/data
     ports:
       - "3002:3001"
     environment:
@@ -69,9 +80,6 @@ services:
     networks:
       - kuma-network
 
-volumes:
-  kuma-db:
-
 networks:
   kuma-network:
-    driver: bridge 
+    external: true
