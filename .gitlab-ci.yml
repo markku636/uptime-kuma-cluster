@@ -41,14 +41,15 @@ check_remote_directory:
       for DIR in $REMOTE_DIRS; do
         echo "=== 檢查並建立: $DIR ==="
         ssh -p "$DEPLOY_PORT" -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST "
+          set -e
           if [ ! -d '$DIR' ]; then
             echo '$DIR 資料夾不存在，正在建立...';
-            mkdir -p '$DIR';
+            sudo mkdir -p '$DIR';
           else
             echo '$DIR 資料夾已存在';
           fi
 
-          chmod 775 '$DIR'
+          sudo chmod 775 '$DIR'
           echo '已將 $DIR 權限設為 775'
         "
       done
