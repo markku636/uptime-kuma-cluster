@@ -69,7 +69,7 @@ build:
       --target release
       -f docker/dockerfile
       -t ${IMAGE}
-      ./docker
+      .
     - echo "Docker image built successfully"
     - docker push ${IMAGE}
   after_script:
