@@ -1,0 +1,8 @@
+{
+    "type": "mariadb",
+    "hostname": "mariadb",
+    "port": "3306",
+    "dbName": "kuma",
+    "username": "kuma",
+    "password": "kuma_pass"
+}

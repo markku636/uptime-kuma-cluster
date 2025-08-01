@@ -1,0 +1,111 @@
+[2025-07-07 15:41:59] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:42:07] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:42:13] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:47:08] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:47:09] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:47:18] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:50:12] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:50:17] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:50:20] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:50:29] TypeError: callback is not a function
+    at Socket.<anonymous> (/app/server/socket-handlers/node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2025-07-07 15:51:49] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:51:52] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:51:52] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:51:53] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:14] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:14] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:15] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:16] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:19] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:56:57] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:57:16] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 15:59:11] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:03:20] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:03:22] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:03:22] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:03:26] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:04:34] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:07:19] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:15] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:16] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:16] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:18] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:19] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:23] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:25:31] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:28:02] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2025-07-07 16:28:05] TypeError: callback is not a function
+    at Socket.<anonymous> (D:\Projects\kuma\server\socket-handlers\node-socket-handler.js:26:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
