@@ -21,7 +21,7 @@ services:
     volumes:
       - kuma-db:/var/lib/mysql
     ports:
-      - "3306:3306"
+      - "33066:3306"
     restart: unless-stopped
     networks:
       - kuma-network
