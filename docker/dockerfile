@@ -23,6 +23,9 @@ COPY . .
 COPY --chown=node:node --from=build_healthcheck /app/extra/healthcheck /app/extra/healthcheck
 RUN mkdir ./data
 
+# Copy pre-built frontend assets if they exist (from GitLab CI artifacts)
+COPY --chown=node:node dist/ ./dist/
+
 ############################################
 # ⭐ Main Image
 ############################################
@@ -51,7 +54,6 @@ USER node
 # Mark as Nightly
 ############################################
 FROM release AS nightly
-RUN npm run build
 RUN npm run mark-as-nightly
 
 FROM nightly AS nightly-rootless
