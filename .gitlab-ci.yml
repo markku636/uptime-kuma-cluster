@@ -2,6 +2,7 @@ stages:
   - check
   - build
   - deploy
+  - cleanup
 
 variables:
   IMAGE: ${AZURE_CONTAINER_REGISTRY_URL}${CI_REGISTRY_IMAGE}:${CI_PIPELINE_ID}
@@ -73,8 +74,6 @@ build:
       .
     - echo "Docker image built successfully"
     - docker push ${IMAGE}
-  after_script:
-    - docker images -f "dangling=true" -q | xargs --no-run-if-empty docker rmi
   only:
     - main
   tags:
@@ -83,7 +82,7 @@ build:
 deploy:
   stage: deploy
   image:
-    name: docker/compose:2.29.3
+    name: docker:latest
     entrypoint: [""]
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
@@ -130,3 +129,33 @@ verify:
   tags:
     - Development.IISI_Banqiao.docker
   allow_failure: false
+
+cleanup_old_images:
+  stage: cleanup
+  image:
+    name: docker:latest
+    pull_policy: always
+    entrypoint: [ "" ]
+  script:
+    - >
+      REPO="$AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME";
+      KEEP=$KEEP_VERSIONS;
+      echo "開始清理 ${REPO} 舊版映像檔，只保留最新 ${KEEP} 個版本";
+      TOTAL=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | wc -l);
+      echo "總共找到 ${TOTAL} 個版本";
+      REMOVE_COUNT=$((TOTAL - KEEP));
+      if [ "$REMOVE_COUNT" -gt 0 ]; then
+        echo "需要刪除 ${REMOVE_COUNT} 個舊版本";
+        IMAGES=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | sort -k2 -n | head -n ${REMOVE_COUNT} | awk '{print $3}');
+        for image in $IMAGES; do
+          echo "刪除映像檔：$image";
+          docker rmi --force $image || true;
+        done;
+      else
+        echo "沒有需要刪除的舊版本映像檔";
+      fi
+  tags:
+    - Development.IISI_Banqiao.docker
+  variables:
+    KEEP_VERSIONS: 3
+  when: on_success
