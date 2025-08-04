@@ -51,6 +51,7 @@ USER node
 # Mark as Nightly
 ############################################
 FROM release AS nightly
+RUN npm run build
 RUN npm run mark-as-nightly
 
 FROM nightly AS nightly-rootless
