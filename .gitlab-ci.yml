@@ -59,24 +59,6 @@ check_remote_directory:
   variables:
     REMOTE_DIRS: "/data/volume/uptimekuma"
 
-build_frontend:
-  stage: build
-  image: node:18-alpine
-  before_script:
-    - apk add --no-cache git
-  script:
-    - npm ci
-    - npm run build
-    - echo "Frontend build completed successfully"
-  artifacts:
-    paths:
-      - dist/
-    expire_in: 1 hour
-  only:
-    - main
-  tags:
-    - Development.IISI_Banqiao.docker
-
 build:
   stage: build
   image:
@@ -85,9 +67,7 @@ build:
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
-    # Ensure dist/ directory exists (either from artifacts or create empty)
-    - mkdir -p dist/
-    - ls -la dist/ || echo "No dist directory found"
+    - echo "=== 建置包含前端的 Docker 映像檔 ==="
     - docker build
       --target release
       -f docker/dockerfile
@@ -95,8 +75,6 @@ build:
       .
     - echo "Docker image built successfully"
     - docker push ${IMAGE}
-  dependencies:
-    - build_frontend
   only:
     - main
   tags:

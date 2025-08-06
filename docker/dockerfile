@@ -8,6 +8,27 @@ ARG BASE_IMAGE=louislam/uptime-kuma:base2
 FROM louislam/uptime-kuma:builder-go AS build_healthcheck
 
 ############################################
+# Build Frontend Assets
+############################################
+FROM louislam/uptime-kuma:base2 AS build_frontend
+USER node
+WORKDIR /app
+
+# Install git for npm dependencies
+USER root
+RUN apt update && apt --yes --no-install-recommends install git
+USER node
+
+COPY --chown=node:node .npmrc .npmrc
+COPY --chown=node:node package.json package.json
+COPY --chown=node:node package-lock.json package-lock.json
+RUN npm ci
+
+# Copy source files and build frontend
+COPY --chown=node:node . .
+RUN npm run build
+
+############################################
 # Build in Node.js
 ############################################
 FROM louislam/uptime-kuma:base2 AS build
@@ -23,8 +44,8 @@ COPY . .
 COPY --chown=node:node --from=build_healthcheck /app/extra/healthcheck /app/extra/healthcheck
 RUN mkdir ./data
 
-# Copy pre-built frontend assets (from GitLab CI artifacts)
-COPY --chown=node:node dist/ ./dist/
+# Copy pre-built frontend assets from frontend build stage
+COPY --chown=node:node --from=build_frontend /app/dist/ ./dist/
 
 ############################################
 # ⭐ Main Image
