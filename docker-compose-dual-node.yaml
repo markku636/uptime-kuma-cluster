@@ -53,8 +53,10 @@ services:
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       - UPTIME_KUMA_NODE_ID=node1
+      - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
     restart: unless-stopped
 
     networks:
@@ -81,8 +83,10 @@ services:
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       - UPTIME_KUMA_NODE_ID=node2
+      - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - kuma-network
