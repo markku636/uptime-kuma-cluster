@@ -85,8 +85,9 @@ build:
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
-    # Copy the built frontend assets to the current directory for Docker build
-    - cp -r dist/ ./dist/ || echo "No dist directory found from artifacts"
+    # Ensure dist/ directory exists (either from artifacts or create empty)
+    - mkdir -p dist/
+    - ls -la dist/ || echo "No dist directory found"
     - docker build
       --target release
       -f docker/dockerfile
