@@ -34,10 +34,10 @@ services:
 
   uptime-kuma-node1:
     image: ${IMAGE}
-#    build:
-#      context: .
-#      dockerfile: docker/dockerfile
-#      target: release
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
     container_name: uptime-kuma-node1
     volumes:
       - ./data/node1:/app/data
@@ -64,13 +64,13 @@ services:
 
   uptime-kuma-node2:
     image: ${IMAGE}
-#    build:
-#      context: .
-#      dockerfile: docker/dockerfile
-#      target: release
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
     container_name: uptime-kuma-node2
-#    volumes:
-#      - ./data/node2:/app/data
+    volumes:
+      - ./data/node2:/app/data
     ports:
       - "3002:3001"
     environment:
