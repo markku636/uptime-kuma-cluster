@@ -1,0 +1,178 @@
+version: '3.8'
+
+volumes:
+  kuma-db:
+    name: kuma-db
+  nginx_logs:
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: uptime-kuma-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: kuma_root_pass
+      MYSQL_DATABASE: kuma
+      MYSQL_USER: kuma
+      MYSQL_PASSWORD: kuma_pass
+    volumes:
+      - kuma-db:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # OpenResty 負載平衡器（自建映像，支援 Lua Debug/MaxMind）
+  openresty:
+    build:
+      context: .
+      dockerfile: docker/openresty.dockerfile
+    container_name: uptime-kuma-openresty
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "9966:9966"
+    volumes:
+      - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d:ro
+      - ./nginx/ssl:/usr/local/openresty/nginx/conf/ssl:ro
+      - ./nginx/logs:/usr/local/openresty/nginx/logs
+      # 將專案內的 Lua 模組掛載到 nginx/lua，避免覆蓋容器內建 lualib（含 emmy_core.so）
+      - ./lua:/usr/local/openresty/nginx/lua:ro
+    environment:
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_USER=kuma
+      - DB_PASSWORD=kuma_pass
+      - DB_NAME=kuma
+      # EmmyLua Debugger 設定（可選）：外部 IDE 連線資訊，例：127.0.0.1:9966
+      # - EMMY_DEBUG_HOST=host.docker.internal
+      # - EMMY_DEBUG_PORT=9966
+    depends_on:
+      - mariadb
+      - uptime-kuma-node1
+      - uptime-kuma-node2
+      - uptime-kuma-node3
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  uptime-kuma-node1:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    container_name: uptime-kuma-node1
+    volumes:
+      - ./data/node1:/app/data
+    ports:
+      - "3001:3001"
+    environment:
+      - UM_ALLOW_IFRAME=true
+      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
+      - UPTIME_KUMA_DB_TYPE=mariadb
+      - UPTIME_KUMA_DB_HOSTNAME=mariadb
+      - UPTIME_KUMA_DB_PORT=3306
+      - UPTIME_KUMA_DB_NAME=kuma
+      - UPTIME_KUMA_DB_USERNAME=kuma
+      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
+      - UPTIME_KUMA_NODE_ID=node1
+      - UPTIME_KUMA_FORCE_MIGRATE=true
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  uptime-kuma-node2:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    container_name: uptime-kuma-node2
+    volumes:
+      - ./data/node2:/app/data
+    ports:
+      - "3002:3001"
+    environment:
+      - UM_ALLOW_IFRAME=true
+      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
+      - UPTIME_KUMA_DB_TYPE=mariadb
+      - UPTIME_KUMA_DB_HOSTNAME=mariadb
+      - UPTIME_KUMA_DB_PORT=3306
+      - UPTIME_KUMA_DB_NAME=kuma
+      - UPTIME_KUMA_DB_USERNAME=kuma
+      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
+      - UPTIME_KUMA_NODE_ID=node2
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  uptime-kuma-node3:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    container_name: uptime-kuma-node3
+    volumes:
+      - ./data/node3:/app/data
+    ports:
+      - "3003:3001"
+    environment:
+      - UM_ALLOW_IFRAME=true
+      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
+      - UPTIME_KUMA_DB_TYPE=mariadb
+      - UPTIME_KUMA_DB_HOSTNAME=mariadb
+      - UPTIME_KUMA_DB_PORT=3306
+      - UPTIME_KUMA_DB_NAME=kuma
+      - UPTIME_KUMA_DB_USERNAME=kuma
+      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
+      - UPTIME_KUMA_NODE_ID=node3
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  kuma-network:
+    driver: bridge

@@ -1,14 +1,5 @@
 version: '3.8'
 
-volumes:
-  kuma-db:
-    name: kuma-db
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/volume/uptimekuma
-
 services:
   mariadb:
     image: mariadb:10
@@ -21,19 +12,12 @@ services:
     volumes:
       - kuma-db:/var/lib/mysql
     ports:
-      - "33066:3306"
+      - "3306:3306"
     restart: unless-stopped
     networks:
       - kuma-network
-    healthcheck:
-      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
 
   uptime-kuma-node1:
-    image: ${IMAGE}
     build:
       context: .
       dockerfile: docker/dockerfile
@@ -55,15 +39,12 @@ services:
       - UPTIME_KUMA_NODE_ID=node1
       - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      mariadb:
-        condition: service_healthy
+      - mariadb
     restart: unless-stopped
-
     networks:
       - kuma-network
 
   uptime-kuma-node2:
-    image: ${IMAGE}
     build:
       context: .
       dockerfile: docker/dockerfile
@@ -85,12 +66,14 @@ services:
       - UPTIME_KUMA_NODE_ID=node2
       - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      mariadb:
-        condition: service_healthy
+      - mariadb
     restart: unless-stopped
     networks:
       - kuma-network
 
+volumes:
+  kuma-db:
+
 networks:
   kuma-network:
-    external: true
+    driver: bridge 
