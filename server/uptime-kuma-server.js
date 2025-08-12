@@ -257,7 +257,7 @@ class UptimeKumaServer {
             queryParams.push(monitorID);
         }
 
-        // Load balancing: filter monitors by assigned node
+        // Load balancing: filter monitors by effective node (assigned_node overrides node_id)
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
         if (currentNodeId) {
             // Check if this node exists in database
@@ -268,8 +268,8 @@ class UptimeKumaServer {
             } else {
                 log.debug("monitor", `[getMonitorJSONList] Filtering monitors for node: ${currentNodeId} (not in database)`);
             }
-            query += "AND (assigned_node = ? OR assigned_node IS NULL) ";
-            queryParams.push(currentNodeId);
+            query += "AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            queryParams.push(currentNodeId, currentNodeId);
         } else {
             log.debug("monitor", "[getMonitorJSONList] No node ID specified, returning all monitors");
         }

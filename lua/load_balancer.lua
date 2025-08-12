@@ -32,20 +32,16 @@ local function get_node_loads()
         return nil
     end
     
-    -- 查詢各節點的 monitor 數量
+    -- 查詢各節點的 monitor 數量（改用 node 表，且不需要硬體規格欄位）
     local sql = [[
         SELECT 
             n.node_id,
-            n.host,
-            n.port,
+            n.ip AS host,            
             n.status,
-            COUNT(m.id) as monitor_count,
-            n.cpu_cores,
-            n.memory_gb
-        FROM heartbeat_nodes n
-        LEFT JOIN monitor m ON n.node_id = m.node_id
-        WHERE n.status = 'active'
-        GROUP BY n.node_id, n.host, n.port, n.status, n.cpu_cores, n.memory_gb
+            COUNT(m.id) AS monitor_count
+        FROM node n
+        LEFT JOIN monitor m ON n.node_id = m.node_id        
+        GROUP BY n.node_id, n.ip, n.status
         ORDER BY monitor_count ASC
     ]]
     
@@ -59,12 +55,10 @@ local function get_node_loads()
     -- 關閉資料庫連接
     db:close()
     
-    -- 計算負載分數
+    -- 計算負載分數（僅依據監控數量）
     for i, node in ipairs(res) do
         local monitor_weight = 1 / (node.monitor_count + 1)
-        local hardware_weight = ((node.cpu_cores or 1) * 0.6 + (node.memory_gb or 1) * 0.4) / 10
-        
-        node.load_score = monitor_weight * 0.7 + hardware_weight * 0.3
+        node.load_score = monitor_weight
     end
     
     return res

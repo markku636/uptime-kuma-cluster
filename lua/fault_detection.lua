@@ -29,7 +29,8 @@ local function get_node_info(node_id)
         return nil
     end
     
-    local sql = "SELECT * FROM heartbeat_nodes WHERE node_id = ?"
+    -- 改為讀取 node 表
+    local sql = "SELECT * FROM node WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()
@@ -64,7 +65,8 @@ local function check_node_responsiveness(node)
     local httpc = http.new()
     httpc:set_timeout(5000)
     
-    local res, err = httpc:request_uri("http://" .. node.host .. ":" .. node.port .. "/health", {
+    -- node 表沒有 host/port，使用 ip 欄位，port 採用預設 3001
+    local res, err = httpc:request_uri("http://" .. (node.ip or "127.0.0.1") .. ":3001/health", {
         method = "GET",
         headers = {
             ["User-Agent"] = "OpenResty-Health-Check"
@@ -94,8 +96,8 @@ local function mark_node_as_failed(node_id)
         return
     end
     
-    -- 更新節點狀態
-    local sql = "UPDATE heartbeat_nodes SET status = 'dead', failure_time = NOW() WHERE node_id = ?"
+    -- 更新節點狀態（改用 node 表，並用離線狀態）
+    local sql = "UPDATE node SET status = 'offline' WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()
@@ -112,7 +114,7 @@ local function check_node_recovery(node_id)
         return false
     end
     
-    if node.status == 'dead' then
+    if node.status == 'offline' then
         local is_responsive = check_node_responsiveness(node)
         if is_responsive then
             ngx.log(ngx.INFO, "節點 " .. node_id .. " 已恢復，開始復原流程")
@@ -138,8 +140,8 @@ local function start_recovery_process(node_id)
         return
     end
     
-    -- 更新節點狀態為恢復中
-    local sql = "UPDATE heartbeat_nodes SET status = 'recovering', last_recovery_attempt = NOW() WHERE node_id = ?"
+    -- 更新節點狀態為恢復中（改用 node 表，僅更新狀態）
+    local sql = "UPDATE node SET status = 'recovering' WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()
@@ -163,8 +165,8 @@ local function complete_node_recovery(node_id)
         return
     end
     
-    -- 更新節點狀態為活躍
-    local sql = "UPDATE heartbeat_nodes SET status = 'active', recovery_completed_at = NOW() WHERE node_id = ?"
+    -- 更新節點狀態為活躍（node 表使用 'online'）
+    local sql = "UPDATE node SET status = 'online' WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()
@@ -195,7 +197,8 @@ return {
                 return {}
             end
 
-            local sql = "SELECT node_id, host, port, status FROM heartbeat_nodes"
+            -- 列出節點（改用 node 表，輸出 ip & 預設 port）
+            local sql = "SELECT node_id, ip AS host, status FROM node"
             local res, err = db:query(sql)
             db:close()
 
@@ -211,7 +214,7 @@ return {
             local nodes = list_nodes()
             for _, n in ipairs(nodes) do
                 summary.checked = summary.checked + 1
-                if n.status == 'dead' then
+                if n.status == 'offline' then
                     if check_node_recovery(n.node_id) then
                         summary.recovered = summary.recovered + 1
                     end

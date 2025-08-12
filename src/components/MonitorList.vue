@@ -359,11 +359,11 @@ export default {
                 }
             }
 
-            // filter by assigned node (only if UPTIME_KUMA_NODE_ID is set and not showing all nodes)
+            // filter by effective node (assigned_node overrides node_id) when not showing all nodes
             let nodeMatch = true;
             if (this.$root.info && this.$root.info.currentNodeId && !this.showAllNodes) {
-                // If a node ID is configured and not showing all nodes, only show monitors assigned to this node or unassigned monitors
-                nodeMatch = !monitor.assigned_node || monitor.assigned_node === this.$root.info.currentNodeId;
+                const effectiveNode = monitor.assigned_node || monitor.node_id || null;
+                nodeMatch = !effectiveNode || effectiveNode === this.$root.info.currentNodeId;
             }
 
             // filter by search text

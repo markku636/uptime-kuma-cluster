@@ -322,64 +322,7 @@ server {
 創建 `db/knex_migrations/2025-01-01-0000-create-cluster-tables.js`:
 
 ```javascript
-exports.up = function (knex) {
-    return knex.schema
-        .createTable("heartbeat_nodes", function (table) {
-            table.increments("id");
-            table.comment("This table contains the cluster node information");
-            table.string("node_id", 50).unique().notNullable();
-            table.string("host", 255).notNullable();
-            table.integer("port").defaultTo(3001);
-            table.enum("status", ["active", "dead", "recovering", "recovery_failed"]).defaultTo("active");
-            table.integer("cpu_cores").defaultTo(1);
-            table.integer("memory_gb").defaultTo(1);
-            table.integer("disk_gb").defaultTo(10);
-            table.integer("weight").defaultTo(1);
-            table.timestamp("last_seen").defaultTo(knex.fn.now()).onUpdate(knex.fn.now());
-            table.timestamp("failure_time").nullable();
-            table.integer("recovery_attempts").defaultTo(0);
-            table.timestamp("last_recovery_attempt").nullable();
-            table.timestamp("recovery_completed_at").nullable();
-            table.timestamp("created_at").defaultTo(knex.fn.now());
-            table.timestamp("updated_at").defaultTo(knex.fn.now()).onUpdate(knex.fn.now());
-        })
-        .then(() => {
-            // 插入預設節點
-            return knex("heartbeat_nodes").insert([
-                {
-                    node_id: "node1",
-                    host: "node1",
-                    port: 3001,
-                    status: "active",
-                    cpu_cores: 2,
-                    memory_gb: 2,
-                    disk_gb: 20
-                },
-                {
-                    node_id: "node2",
-                    host: "node2",
-                    port: 3001,
-                    status: "active",
-                    cpu_cores: 2,
-                    memory_gb: 2,
-                    disk_gb: 20
-                },
-                {
-                    node_id: "node3",
-                    host: "node3",
-                    port: 3001,
-                    status: "active",
-                    cpu_cores: 2,
-                    memory_gb: 2,
-                    disk_gb: 20
-                }
-            ]);
-        });
-};
-
-exports.down = function (knex) {
-    return knex.schema.dropTable("heartbeat_nodes");
-};
+// 已改用 `node` 表，舊的 `heartbeat_nodes` 遷移已移除
 ```
 
 創建 `db/knex_migrations/2025-01-01-0001-add-node-id-to-monitor.js`:
@@ -684,13 +627,11 @@ local function get_node_loads()
             n.host,
             n.port,
             n.status,
-            COUNT(m.id) as monitor_count,
-            n.cpu_cores,
-            n.memory_gb
-        FROM heartbeat_nodes n
-        LEFT JOIN monitor m ON n.node_id = m.node_id
-        WHERE n.status = 'active'
-        GROUP BY n.node_id, n.host, n.port, n.status, n.cpu_cores, n.memory_gb
+            COUNT(m.id) as monitor_count
+        FROM node n
+        LEFT JOIN monitor m ON n.node_id = m.assigned_node
+        WHERE n.status = 'online'
+        GROUP BY n.node_id, n.status
         ORDER BY monitor_count ASC
     ]]
     
@@ -707,9 +648,7 @@ local function get_node_loads()
     -- 計算負載分數
     for i, node in ipairs(res) do
         local monitor_weight = 1 / (node.monitor_count + 1)
-        local hardware_weight = ((node.cpu_cores or 1) * 0.6 + (node.memory_gb or 1) * 0.4) / 10
-        
-        node.load_score = monitor_weight * 0.7 + hardware_weight * 0.3
+        node.load_score = monitor_weight
     end
     
     return res
@@ -1008,8 +947,8 @@ local function mark_node_as_failed(node_id)
         return
     end
     
-    -- 更新節點狀態
-    local sql = "UPDATE heartbeat_nodes SET status = 'dead', failure_time = NOW() WHERE node_id = ?"
+    -- 更新節點狀態（改用 node 表）
+    local sql = "UPDATE node SET status = 'offline' WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()
@@ -1052,8 +991,8 @@ local function start_recovery_process(node_id)
         return
     end
     
-    -- 更新節點狀態為恢復中
-    local sql = "UPDATE heartbeat_nodes SET status = 'recovering', last_recovery_attempt = NOW() WHERE node_id = ?"
+    -- 更新節點狀態為恢復中（改用 node 表）
+    local sql = "UPDATE node SET status = 'recovering' WHERE node_id = ?"
     local res, err = db:query(sql, {node_id})
     
     db:close()

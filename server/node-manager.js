@@ -103,8 +103,8 @@ class NodeManager {
         try {
             log.info("node-manager", `Handling failover for node: ${failedNodeId}`);
 
-            // Get all monitors assigned to the failed node
-            const affectedMonitors = await R.find("monitor", "assigned_node = ?", [failedNodeId]);
+            // Get all monitors assigned to the failed node (assigned_node) or whose default node_id equals failed node
+            const affectedMonitors = await R.find("monitor", "assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)", [failedNodeId, failedNodeId]);
             
             if (affectedMonitors.length === 0) {
                 log.info("node-manager", `No monitors to transfer from failed node: ${failedNodeId}`);
@@ -178,15 +178,15 @@ class NodeManager {
      */
     async shouldTriggerRebalancing(onlineNodes) {
         try {
-            // Get monitor counts per node
+            // Get monitor counts per node based on effective node
             const monitorCounts = {};
             for (const node of onlineNodes) {
-                const count = await R.getCell("SELECT COUNT(*) FROM monitor WHERE assigned_node = ?", [node.node_id]);
+                const count = await R.getCell("SELECT COUNT(*) FROM monitor WHERE assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)", [node.node_id, node.node_id]);
                 monitorCounts[node.node_id] = parseInt(count) || 0;
             }
 
             // Also count unassigned monitors
-            const unassignedCount = await R.getCell("SELECT COUNT(*) FROM monitor WHERE assigned_node IS NULL");
+            const unassignedCount = await R.getCell("SELECT COUNT(*) FROM monitor WHERE assigned_node IS NULL AND (node_id IS NULL OR node_id = '')");
             
             // Trigger rebalancing if there are unassigned monitors
             if (unassignedCount > 0) {
@@ -242,13 +242,14 @@ class NodeManager {
             
             for (const monitor of allMonitors) {
                 const targetNode = onlineNodes[nodeIndex];
-                
-                // Only update if assignment is different
-                if (monitor.assigned_node !== targetNode.node_id) {
+                const effectiveNode = monitor.assigned_node || monitor.node_id || null;
+
+                // Only update if assignment is different from effective node
+                if (effectiveNode !== targetNode.node_id) {
                     reassignments.push({
                         monitorId: monitor.id,
                         monitorName: monitor.name,
-                        oldNode: monitor.assigned_node || "unassigned",
+                        oldNode: effectiveNode || "unassigned",
                         newNode: targetNode.node_id
                     });
                 }

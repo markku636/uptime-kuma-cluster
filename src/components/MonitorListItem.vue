@@ -26,7 +26,7 @@
                             <span v-if="shouldShowNodeInfo" class="node-badge">
                                 <small>
                                     <font-awesome-icon icon="server" />
-                                    {{ monitor.assigned_node || $t("Unassigned") }}
+                                    {{ (monitor.assigned_node || monitor.node_id) || $t("Unassigned") }}
                                 </small>
                             </span>
                         </div>

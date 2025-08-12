@@ -152,10 +152,10 @@ module.exports.nodeSocketHandler = (socket) => {
                 throw new Error("Node not found");
             }
 
-            // Check if any monitors are assigned to this node
-            const assignedMonitors = await R.find("monitor", "assigned_node = ?", [node.node_id]);
+            // Check if any monitors are assigned to this node (either assigned_node or default node_id)
+            const assignedMonitors = await R.find("monitor", "assigned_node = ? OR node_id = ?", [node.node_id, node.node_id]);
             if (assignedMonitors.length > 0) {
-                throw new Error(`Cannot delete node. ${assignedMonitors.length} monitor(s) are assigned to this node.`);
+                throw new Error(`Cannot delete node. ${assignedMonitors.length} monitor(s) are assigned or default to this node.`);
             }
 
             await Node.deleteById(nodeId);
