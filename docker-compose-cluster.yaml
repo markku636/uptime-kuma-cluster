@@ -77,6 +77,8 @@ services:
       - DB_USER=kuma
       - DB_PASSWORD=kuma_pass
       - DB_NAME=kuma
+      - UPTIME_KUMA_NODE_ID=nginx-node
+      - NODE_ID=nginx-node
       # EmmyLua Debugger 設定（可選）：外部 IDE 連線資訊，例：127.0.0.1:9966
       # - EMMY_DEBUG_HOST=host.docker.internal
       # - EMMY_DEBUG_PORT=9966

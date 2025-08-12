@@ -199,10 +199,9 @@ class UptimeKumaServer {
         const Node = require("./model/node");
         await Node.initializeFromEnv();
 
-        // Start NodeManager for failover and load balancing
-        const { getNodeManager } = require("./node-manager");
-        this.nodeManager = getNodeManager();
-        this.nodeManager.start();
+        // NodeManager has been migrated to OpenResty/nginx
+        // Health checks and failover are now handled by nginx with Lua scripts
+        this.nodeManager = null;
 
         await this.loadMaintenanceList();
     }
@@ -510,10 +509,8 @@ class UptimeKumaServer {
             await this.stopNSCDServices();
         }
 
-        // Stop NodeManager
-        if (this.nodeManager) {
-            this.nodeManager.stop();
-        }
+        // NodeManager has been migrated to OpenResty/nginx
+        // No need to stop NodeManager
     }
 
     /**

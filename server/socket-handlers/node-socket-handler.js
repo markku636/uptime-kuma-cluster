@@ -184,19 +184,27 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { getNodeManager } = require("../node-manager");
-            const nodeManager = getNodeManager();
-            const success = await nodeManager.triggerManualRebalancing();
-
-            if (success) {
-                log.info("node", `Manual monitor rebalancing triggered by user ${socket.userID}`);
-                
-                callback({
-                    ok: true,
-                    msg: "Monitor rebalancing completed successfully",
-                });
-            } else {
-                throw new Error("Failed to trigger monitor rebalancing");
+            // NodeManager has been migrated to OpenResty/nginx
+            // Manual rebalancing is now handled by nginx with Lua scripts
+            // You can trigger rebalancing by calling: POST /api/trigger-rebalancing
+            
+            // Call nginx API for rebalancing
+            const axios = require('axios');
+            try {
+                const response = await axios.post('http://localhost/api/trigger-rebalancing');
+                if (response.status === 200) {
+                    log.info("node", `Manual monitor rebalancing triggered by user ${socket.userID} via nginx`);
+                    
+                    callback({
+                        ok: true,
+                        msg: "Monitor rebalancing completed successfully via nginx",
+                    });
+                } else {
+                    throw new Error("Nginx rebalancing API returned non-200 status");
+                }
+            } catch (apiError) {
+                log.error("node", `Failed to call nginx rebalancing API: ${apiError.message}`);
+                throw new Error("Failed to trigger monitor rebalancing via nginx");
             }
 
         } catch (e) {

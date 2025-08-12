@@ -161,35 +161,15 @@ class Node extends BeanModel {
     /**
      * Update node heartbeat
      * @param {string} nodeId Node ID
-     * @param {string} status Node status ('online', 'offline', 'unknown'\
+     * @param {string} status Node status ('online', 'offline', 'unknown')
      * @param {string} errorMessage Error message if any
      * @returns {Promise<void>}
+     * @deprecated This method is deprecated. Heartbeat updates are now handled by OpenResty/nginx
      */
     static async updateHeartbeat(nodeId, status = "online", errorMessage = null) {
-        try {
-            log.debug("node", `Attempting to update heartbeat for node: ${nodeId} with status: ${status}`);
-            
-            // Check if R object is available
-            if (typeof R === 'undefined') {
-                throw new Error("Database connection (R) is not available");
-            }
-            
-            const node = await Node.getByNodeId(nodeId);
-            if (node) {
-                node.status = status;
-                node.last_heartbeat = R.isoDateTime();
-                node.last_error_message = errorMessage;
-                node.modified_date = R.isoDateTime();
-                await R.store(node);
-                log.debug("node", `Updated heartbeat for node: ${nodeId} - status: ${status}`);
-            } else {
-                log.warn("node", `Node not found for heartbeat update: ${nodeId}`);
-            }
-        } catch (error) {
-            log.error("node", `Failed to update heartbeat for node ${nodeId}: ${error.message}`);
-            log.error("node", `Error stack: ${error.stack}`);
-            throw error; // Re-throw to let caller handle it
-        }
+        log.warn("node", `updateHeartbeat is deprecated. Heartbeat updates are now handled by OpenResty/nginx for node: ${nodeId}`);
+        // This method is kept for backward compatibility but does nothing
+        // Actual heartbeat updates are now handled by the nginx health check Lua scripts
     }
 
     /**
@@ -227,18 +207,13 @@ class Node extends BeanModel {
      * Mark nodes as offline if they haven't sent heartbeat recently
      * @param {number} timeoutMinutes Timeout in minutes (default: 5)
      * @returns {Promise<Node[]>} Array of nodes that were marked offline
+     * @deprecated This method is deprecated. Node status management is now handled by OpenResty/nginx
      */
     static async markStaleNodesOffline(timeoutMinutes = 5) {
-        const staleNodes = await Node.getStaleNodes(timeoutMinutes);
-        const markedOffline = [];
-        
-        for (const node of staleNodes) {
-            await Node.updateHeartbeat(node.node_id, "offline", "Node heartbeat timeout");
-            markedOffline.push(node);
-            log.warn("node", `Marked node as offline due to heartbeat timeout: ${node.node_id} (${node.node_name})`);
-        }
-        
-        return markedOffline;
+        log.warn("node", `markStaleNodesOffline is deprecated. Node status management is now handled by OpenResty/nginx`);
+        // This method is kept for backward compatibility but does nothing
+        // Actual node status management is now handled by the nginx health check Lua scripts
+        return [];
     }
 
     /**
