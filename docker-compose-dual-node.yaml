@@ -38,6 +38,9 @@ services:
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       - UPTIME_KUMA_NODE_ID=node1
       - UPTIME_KUMA_FORCE_MIGRATE=true
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_HOST=127.0.0.1:3001
+      - UPTIME_KUMA_NODE_NAME=node1
     depends_on:
       - mariadb
     restart: unless-stopped
@@ -65,6 +68,9 @@ services:
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       - UPTIME_KUMA_NODE_ID=node2
       - UPTIME_KUMA_FORCE_MIGRATE=true
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_HOST=127.0.0.1:3002
+      - UPTIME_KUMA_NODE_NAME=node2
     depends_on:
       - mariadb
     restart: unless-stopped

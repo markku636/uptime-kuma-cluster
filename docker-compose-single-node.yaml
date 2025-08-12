@@ -38,6 +38,9 @@ services:
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       # 啟用負載均衡功能時取消註釋下面這行
       - UPTIME_KUMA_NODE_ID=node1
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_HOST=127.0.0.1:3001
+      - UPTIME_KUMA_NODE_NAME=node1
     depends_on:
       - mariadb
     restart: unless-stopped

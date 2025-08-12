@@ -47,9 +47,7 @@
                             <div class="ip" v-if="item.ip">
                                 <i class="fas fa-server"></i> {{ item.ip }}
                             </div>
-                            <div class="version" v-if="item.version">
-                                <i class="fas fa-tag"></i> v{{ item.version }}
-                            </div>
+
                             <div class="last-heartbeat" v-if="item.lastHeartbeat">
                                 <i class="fas fa-heartbeat"></i> {{ formatDateTime(item.lastHeartbeat) }}
                             </div>
@@ -135,17 +133,7 @@
                                 <div class="form-text">{{ $t("Optional IP address for this node") }}</div>
                             </div>
 
-                            <div class="mb-3">
-                                <label for="nodeVersion" class="form-label">{{ $t("Version") }}</label>
-                                <input
-                                    id="nodeVersion"
-                                    v-model="nodeForm.version"
-                                    type="text"
-                                    class="form-control"
-                                    placeholder="1.0.0"
-                                />
-                                <div class="form-text">{{ $t("Optional version number for this node") }}</div>
-                            </div>
+
 
                             <div class="mb-3">
                                 <div class="form-check">
@@ -194,7 +182,6 @@ export default {
                 nodeId: "",
                 nodeName: "",
                 ip: "",
-                version: "",
                 isPrimary: false,
             },
             modal: null,
@@ -251,7 +238,6 @@ export default {
                 nodeId: "",
                 nodeName: "",
                 ip: "",
-                version: "",
                 isPrimary: false,
             };
             this.modal.show();
@@ -268,7 +254,6 @@ export default {
                 nodeId: node.nodeId,
                 nodeName: node.nodeName,
                 ip: node.ip || "",
-                version: node.version || "",
                 isPrimary: node.isPrimary || false,
             };
             this.modal.show();

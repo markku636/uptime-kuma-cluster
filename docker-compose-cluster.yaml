@@ -1,5 +1,30 @@
 version: '3.8'
 
+# 環境變數定義
+x-common-env: &common-env
+  NODE1_PORT: 3001
+  NODE2_PORT: 3002
+  NODE3_PORT: 3003
+
+# 節點通用配置
+x-node-base: &node-base
+  build:
+    context: .
+    dockerfile: docker/dockerfile
+    target: release
+  restart: unless-stopped
+  networks:
+    - kuma-network
+  depends_on:
+    mariadb:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+
 volumes:
   kuma-db:
     name: kuma-db
@@ -28,7 +53,7 @@ services:
       retries: 5
       start_period: 20s
 
-  # OpenResty 負載平衡器（自建映像，支援 Lua Debug/MaxMind）
+  # OpenResty 負載平衡器（自建映像，支援 Lua Debug）
   openresty:
     build:
       context: .
@@ -70,15 +95,12 @@ services:
       start_period: 40s
 
   uptime-kuma-node1:
-    build:
-      context: .
-      dockerfile: docker/dockerfile
-      target: release
+    <<: *node-base
     container_name: uptime-kuma-node1
     volumes:
       - ./data/node1:/app/data
     ports:
-      - "3001:3001"
+      - "${NODE1_PORT:-3001}:3001"
     environment:
       - UM_ALLOW_IFRAME=true
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
@@ -88,31 +110,20 @@ services:
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_NODE_ID=node1
       - UPTIME_KUMA_FORCE_MIGRATE=true
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - kuma-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_PORT=${NODE1_PORT:-3001}
+      - UPTIME_KUMA_NODE_ID=node1
+      - UPTIME_KUMA_NODE_HOST=${NODE_HOST:-192.168.201.101}:${NODE1_PORT:-3001}
+      - UPTIME_KUMA_NODE_NAME=node1
 
   uptime-kuma-node2:
-    build:
-      context: .
-      dockerfile: docker/dockerfile
-      target: release
+    <<: *node-base
     container_name: uptime-kuma-node2
     volumes:
       - ./data/node2:/app/data
     ports:
-      - "3002:3001"
+      - "${NODE2_PORT:-3002}:3001"
     environment:
       - UM_ALLOW_IFRAME=true
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
@@ -122,32 +133,24 @@ services:
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_PORT=${NODE2_PORT:-3002}
       - UPTIME_KUMA_NODE_ID=node2
+      - UPTIME_KUMA_NODE_HOST=${NODE_HOST:-192.168.201.101}:${NODE2_PORT:-3002}
+      - UPTIME_KUMA_NODE_NAME=node2
     depends_on:
       mariadb:
         condition: service_healthy
       uptime-kuma-node1:
         condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - kuma-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   uptime-kuma-node3:
-    build:
-      context: .
-      dockerfile: docker/dockerfile
-      target: release
+    <<: *node-base
     container_name: uptime-kuma-node3
     volumes:
       - ./data/node3:/app/data
     ports:
-      - "3003:3001"
+      - "${NODE3_PORT:-3003}:3001"
     environment:
       - UM_ALLOW_IFRAME=true
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
@@ -157,21 +160,16 @@ services:
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
+      # 節點配置參數
+      - UPTIME_KUMA_NODE_PORT=${NODE3_PORT:-3003}
       - UPTIME_KUMA_NODE_ID=node3
+      - UPTIME_KUMA_NODE_HOST=${NODE_HOST:-192.168.201.101}:${NODE3_PORT:-3003}
+      - UPTIME_KUMA_NODE_NAME=node3
     depends_on:
       mariadb:
         condition: service_healthy
       uptime-kuma-node1:
         condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - kuma-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 networks:
   kuma-network:

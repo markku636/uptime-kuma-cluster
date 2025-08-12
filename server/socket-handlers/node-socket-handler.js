@@ -35,7 +35,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { nodeId, nodeName, ip, isPrimary, version } = nodeData;
+            const { nodeId, nodeName, ip, isPrimary } = nodeData;
 
             // Validate required fields
             if (!nodeId || !nodeName) {
@@ -49,9 +49,9 @@ module.exports.nodeSocketHandler = (socket) => {
             }
 
             // Create new node
-            const node = await Node.createOrUpdate(nodeId, nodeName, ip, isPrimary, version);
+            const node = await Node.createOrUpdate(nodeId, nodeName, ip, isPrimary);
 
-            log.info("node", `Added node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} version: ${version || 'N/A'} by user ${socket.userID}`);
+            log.info("node", `Added node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
             // Send updated list to all clients
             await sendNodeList(socket);
@@ -76,7 +76,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { id, nodeId, nodeName, ip, isPrimary, version } = nodeData;
+            const { id, nodeId, nodeName, ip, isPrimary } = nodeData;
 
             // Validate required fields
             if (!id || !nodeId || !nodeName) {
@@ -101,7 +101,6 @@ module.exports.nodeSocketHandler = (socket) => {
             node.node_id = nodeId;
             node.node_name = nodeName;
             node.ip = ip;
-            node.version = version;
             node.modified_date = R.isoDateTime();
 
             // Handle primary node setting
@@ -123,7 +122,7 @@ module.exports.nodeSocketHandler = (socket) => {
 
             await R.store(node);
 
-            log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} version: ${version || 'N/A'} by user ${socket.userID}`);
+            log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
             // Send updated list to all clients
             await sendNodeList(socket);

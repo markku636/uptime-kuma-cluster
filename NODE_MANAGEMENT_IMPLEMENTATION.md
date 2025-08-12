@@ -25,9 +25,8 @@
   - `last_heartbeat`: 最後心跳時間
   - `last_error_message`: 最後錯誤訊息
 
-- **文件**: `db/knex_migrations/2025-07-04-0000-add-node-version.js`
-- **功能**: 添加節點版本管理欄位：
-  - `version`: 節點版本（字串，可選）
+
+
 
 ### 2. Node Model
 - **文件**: `server/model/node.js`
@@ -105,7 +104,6 @@
 - `UPTIME_KUMA_NODE_ID` 或 `NODE_ID`: 節點 ID
 - `UPTIME_KUMA_NODE_NAME` 或 `NODE_NAME`: 節點名稱（可選）
 - `UPTIME_KUMA_NODE_IP` 或 `NODE_IP`: 節點 IP（可選）
-- `UPTIME_KUMA_NODE_VERSION` 或 `NODE_VERSION`: 節點版本（可選）
 
 ## 自動初始化
 
@@ -168,13 +166,12 @@
 2. 填寫節點 ID（必填，不可重複）
 3. 填寫節點名稱（必填）
 4. 填寫 IP 地址（可選）
-5. 填寫節點版本（可選）
-6. 選擇是否為主節點（可選）
-7. 點擊 **Add** 保存
+5. 選擇是否為主節點（可選）
+6. 點擊 **Add** 保存
 
 ### 編輯節點
 1. 在節點列表中點擊 **Edit** 按鈕
-2. 修改節點名稱、IP地址或版本
+2. 修改節點名稱或IP地址
 3. 注意：節點 ID 創建後無法修改
 4. 點擊 **Update** 保存
 

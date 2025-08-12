@@ -8,7 +8,6 @@ CREATE TABLE node (
     status VARCHAR(20) DEFAULT 'unknown',
     last_heartbeat DATETIME,
     last_error_message TEXT,
-    version VARCHAR(50),
     created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     modified_date DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -25,7 +24,7 @@ exports.up = async function (knex) {
             table.string("status", 20).defaultTo("unknown");
             table.dateTime("last_heartbeat").nullable();
             table.text("last_error_message").nullable();
-            table.string("version", 50).nullable();
+
             table.dateTime("created_date").defaultTo(knex.fn.now());
             table.dateTime("modified_date").defaultTo(knex.fn.now());
         });

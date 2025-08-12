@@ -26,17 +26,15 @@ class Node extends BeanModel {
      * @param {string} nodeName Node name
      * @param {string} ip IP address
      * @param {boolean} isPrimary Whether this is the primary node
-     * @param {string} version Node version
      * @returns {Promise<Node>} Created or updated node
      */
-    static async createOrUpdate(nodeId, nodeName, ip = null, isPrimary = false, version = null) {
+    static async createOrUpdate(nodeId, nodeName, ip = null, isPrimary = false) {
         let node = await Node.getByNodeId(nodeId);
         
         if (node) {
             // Update existing node
             node.node_name = nodeName;
             node.ip = ip;
-            node.version = version;
             node.modified_date = R.isoDateTime();
             // Handle primary node setting
             const currentlyPrimary = !!(node.is_primary || node.is_primary === 1);
@@ -47,14 +45,13 @@ class Node extends BeanModel {
                 node.is_primary = 0; // Use 0 for MariaDB TINYINT
             }
             await R.store(node);
-            log.info("node", `Updated node: ${nodeId} (${nodeName}) version: ${version || 'N/A'}`);
+            log.info("node", `Updated node: ${nodeId} (${nodeName})`);
         } else {
             // Create new node
             node = R.dispense("node");
             node.node_id = nodeId;
             node.node_name = nodeName;
             node.ip = ip;
-            node.version = version;
             node.is_primary = isPrimary ? 1 : 0; // Use 1/0 for MariaDB TINYINT
             node.created_date = R.isoDateTime();
             node.modified_date = R.isoDateTime();
@@ -66,7 +63,7 @@ class Node extends BeanModel {
             }
             
             await R.store(node);
-            log.info("node", `Created node: ${nodeId} (${nodeName}) version: ${version || 'N/A'}`);
+            log.info("node", `Created node: ${nodeId} (${nodeName})`);
         }
         
         return node;
@@ -105,13 +102,11 @@ class Node extends BeanModel {
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
         if (currentNodeId) {
             // Try to get IP from environment or use localhost
-            const nodeIp = process.env.UPTIME_KUMA_NODE_IP || process.env.NODE_IP || "127.0.0.1";
+            const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
             // Use node ID as default name if no name is provided
             const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
-            // Get version from environment
-            const nodeVersion = process.env.UPTIME_KUMA_NODE_VERSION || process.env.NODE_VERSION || null;
             
-            await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, false, nodeVersion);
+            await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, false);
         } else {
             // No environment variables set, ensure we have at least one default node
             const existingNodes = await Node.getAll();
@@ -120,10 +115,9 @@ class Node extends BeanModel {
                 const defaultNodeId = "local-node";
                 const defaultNodeName = "Local Node";
                 const defaultNodeIp = "127.0.0.1";
-                const defaultNodeVersion = "1.0.0";
                 
                 log.info("node", "No nodes found and no environment variables set. Creating default local node.");
-                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeIp, true, defaultNodeVersion); // Make it primary
+                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeIp, true); // Make it primary
             }
         }
     }
@@ -167,19 +161,34 @@ class Node extends BeanModel {
     /**
      * Update node heartbeat
      * @param {string} nodeId Node ID
-     * @param {string} status Node status ('online', 'offline', 'unknown')
+     * @param {string} status Node status ('online', 'offline', 'unknown'\
      * @param {string} errorMessage Error message if any
      * @returns {Promise<void>}
      */
     static async updateHeartbeat(nodeId, status = "online", errorMessage = null) {
-        const node = await Node.getByNodeId(nodeId);
-        if (node) {
-            node.status = status;
-            node.last_heartbeat = R.isoDateTime();
-            node.last_error_message = errorMessage;
-            node.modified_date = R.isoDateTime();
-            await R.store(node);
-            log.debug("node", `Updated heartbeat for node: ${nodeId} - status: ${status}`);
+        try {
+            log.debug("node", `Attempting to update heartbeat for node: ${nodeId} with status: ${status}`);
+            
+            // Check if R object is available
+            if (typeof R === 'undefined') {
+                throw new Error("Database connection (R) is not available");
+            }
+            
+            const node = await Node.getByNodeId(nodeId);
+            if (node) {
+                node.status = status;
+                node.last_heartbeat = R.isoDateTime();
+                node.last_error_message = errorMessage;
+                node.modified_date = R.isoDateTime();
+                await R.store(node);
+                log.debug("node", `Updated heartbeat for node: ${nodeId} - status: ${status}`);
+            } else {
+                log.warn("node", `Node not found for heartbeat update: ${nodeId}`);
+            }
+        } catch (error) {
+            log.error("node", `Failed to update heartbeat for node ${nodeId}: ${error.message}`);
+            log.error("node", `Error stack: ${error.stack}`);
+            throw error; // Re-throw to let caller handle it
         }
     }
 
@@ -242,7 +251,6 @@ class Node extends BeanModel {
             nodeId: this.node_id,
             nodeName: this.node_name,
             ip: this.ip,
-            version: this.version,
             isPrimary: !!(this.is_primary || this.is_primary === 1), // Handle both boolean and tinyint from MariaDB
             status: this.status || "unknown",
             lastHeartbeat: this.last_heartbeat,
