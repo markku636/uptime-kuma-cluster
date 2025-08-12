@@ -1,10 +1,21 @@
--- lua/health_check.lua - OpenResty 健康檢查和故障轉移模組
+-- lua/health_check.lua - OpenResty 健康檢查、故障檢測和故障轉移模組
 local cjson = require "cjson"
 local mysql = require "resty.mysql"
+local http = require "resty.http"
 
 -- 共享記憶體區域
 local health_checker = ngx.shared.health_checker
 local fault_detector = ngx.shared.fault_detector
+
+-- 配置參數
+local CONFIG = {
+    heartbeat_interval = 60,        -- 心跳間隔（秒）
+    health_check_interval = 60,     -- 健康檢查間隔（秒）
+    fault_scan_interval = 10,       -- 故障掃描間隔（秒）
+    failure_threshold = 3,          -- 失敗閾值（次數）
+    failure_timeout = 120,          -- 失敗超時（秒）
+    recovery_timeout = 300          -- 恢復超時（秒）
+}
 
 -- 資料庫連接配置
 local db_config = {
@@ -23,10 +34,8 @@ local function get_db_connection()
         return nil
     end
     
-    -- 設置連接超時
     db:set_timeout(5000)
     
-    -- 連接到資料庫
     local ok, err = db:connect(db_config)
     if not ok then
         ngx.log(ngx.ERR, "連接資料庫失敗: ", err)
@@ -66,11 +75,111 @@ local function send_heartbeat(node_id)
     
     -- 更新共享記憶體中的最後心跳時間
     health_checker:set("last_heartbeat", current_time)
+    health_checker:set("heartbeat_count", (health_checker:get("heartbeat_count") or 0) + 1)
     
     ngx.log(ngx.DEBUG, "節點心跳已發送: ", node_id, " (", current_time, ")")
     
     db:close()
     return true
+end
+
+-- 主動健康檢查節點
+local function perform_health_check(node_id, node_ip)
+    local httpc = http.new()
+    httpc:set_timeout(5000)
+    
+    local url = string.format("http://%s:3001/health", node_ip)
+    local res, err = httpc:request_uri(url, {
+        method = "GET",
+        headers = {
+            ["User-Agent"] = "OpenResty-Health-Check"
+        }
+    })
+    
+    if not res then
+        ngx.log(ngx.WARN, "節點健康檢查失敗: ", node_id, " - ", (err or "connection failed"))
+        return false
+    end
+    
+    local is_healthy = res.status == 200
+    ngx.log(ngx.DEBUG, "節點健康檢查: ", node_id, " - 狀態: ", res.status, " 健康: ", is_healthy)
+    
+    return is_healthy
+end
+
+-- 掃描所有節點並執行故障檢測/恢復檢查
+local function scan_all_nodes()
+    local function list_nodes()
+        local db = get_db_connection()
+        if not db then
+            ngx.log(ngx.ERR, "創建 MySQL 連接失敗")
+            return {}
+        end
+
+        local sql = "SELECT node_id, ip, status FROM node"
+        local res, err = db:query(sql)
+        db:close()
+
+        if not res then
+            ngx.log(ngx.ERR, "查詢節點清單失敗: ", err)
+            return {}
+        end
+        return res
+    end
+
+    local summary = { checked = 0, failed = 0, recovered = 0 }
+    local nodes = list_nodes()
+    
+    for _, n in ipairs(nodes) do
+        summary.checked = summary.checked + 1
+        
+        -- 檢查節點狀態變化
+        if n.status == 'offline' then
+            -- 檢查離線節點是否應該恢復
+            local recovery_start = fault_detector:get("recovery_start_" .. n.node_id) or 0
+            local current_time = os.time()
+            
+            if current_time - recovery_start >= CONFIG.recovery_timeout then
+                -- 標記為恢復中，同時更新 last_heartbeat
+                local db = get_db_connection()
+                if db then
+                    local sql = "UPDATE node SET status = 'recovering', last_heartbeat = ? WHERE node_id = ?"
+                    db:query(sql, {current_time, n.node_id})
+                    db:close()
+                    
+                    summary.recovered = summary.recovered + 1
+                    ngx.log(ngx.INFO, "節點 ", n.node_id, " 開始恢復流程，時間: ", current_time)
+                end
+            end
+        elseif n.status == 'recovering' then
+            -- 檢查恢復中的節點是否完成恢復
+            local recovery_start = fault_detector:get("recovery_start_" .. n.node_id) or 0
+            local current_time = os.time()
+            
+            if current_time - recovery_start >= CONFIG.recovery_timeout then
+                -- 標記為在線，同時更新 last_heartbeat
+                local db = get_db_connection()
+                if db then
+                    local sql = "UPDATE node SET status = 'online', last_heartbeat = ? WHERE node_id = ?"
+                    db:query(sql, {current_time, n.node_id})
+                    db:close()
+                    
+                    -- 清理恢復計時器
+                    fault_detector:set("recovery_start_" .. n.node_id, 0)
+                    
+                    ngx.log(ngx.INFO, "節點 ", n.node_id, " 恢復完成，時間: ", current_time)
+                end
+            end
+        end
+    end
+
+    if fault_detector then
+        fault_detector:set("last_cycle", ngx.time())
+        fault_detector:set("last_summary", cjson.encode(summary))
+        fault_detector:set("scan_count", (fault_detector:get("scan_count") or 0) + 1)
+    end
+
+    return summary
 end
 
 -- 檢查節點狀態並處理故障轉移
@@ -81,27 +190,105 @@ local function check_nodes_and_handle_failover()
     end
     
     local current_time = os.time()
-    local heartbeat_timeout = 120  -- 2分鐘內沒有心跳就認為節點離線
     
-    -- 檢查離線節點
-    local offline_nodes_sql = "SELECT node_id FROM node WHERE last_heartbeat < ? AND status = 'online'"
-    local offline_nodes, err = db:query(offline_nodes_sql, {current_time - heartbeat_timeout})
+    -- 獲取所有節點
+    local nodes_sql = "SELECT node_id, ip, status, last_heartbeat FROM node ORDER BY node_id"
+    local nodes, err = db:query(nodes_sql)
     
-    if offline_nodes then
-        for _, node in ipairs(offline_nodes) do
-            -- 標記節點為離線
-            local update_sql = "UPDATE node SET status = 'offline' WHERE node_id = ?"
-            db:query(update_sql, {node.node_id})
+    if not nodes then
+        ngx.log(ngx.ERR, "查詢節點失敗: ", err)
+        db:close()
+        return false
+    end
+    
+    local offline_nodes = {}
+    local recovering_nodes = {}
+    
+    for _, node in ipairs(nodes) do
+        if node.status == 'online' then
+            -- 檢查在線節點的健康狀態
+            local is_healthy = perform_health_check(node.node_id, node.ip)
             
-            ngx.log(ngx.WARN, "節點標記為離線: ", node.node_id)
-            
-            -- 處理故障轉移
-            handle_node_failover(db, node.node_id)
+            if not is_healthy then
+                -- 增加失敗計數
+                local failure_key = "failure_count_" .. node.node_id
+                local failure_count = fault_detector:get(failure_key) or 0
+                failure_count = failure_count + 1
+                fault_detector:set(failure_key, failure_count)
+                
+                ngx.log(ngx.WARN, "節點健康檢查失敗: ", node.node_id, " 失敗次數: ", failure_count)
+                
+                -- 如果達到失敗閾值，標記為離線
+                if failure_count >= CONFIG.failure_threshold then
+                    local update_sql = "UPDATE node SET status = 'offline' WHERE node_id = ?"
+                    db:query(update_sql, {node.node_id})
+                    
+                    table.insert(offline_nodes, node)
+                    ngx.log(ngx.ERR, "節點標記為離線: ", node.node_id)
+                    
+                    -- 重置失敗計數
+                    fault_detector:set(failure_key, 0)
+                end
+            else
+                -- 健康檢查成功，重置失敗計數並更新 last_heartbeat
+                local failure_key = "failure_count_" .. node.node_id
+                fault_detector:set(failure_key, 0)
+                
+                -- 更新節點的 last_heartbeat
+                local heartbeat_sql = "UPDATE node SET last_heartbeat = ? WHERE node_id = ?"
+                local ok, err = db:query(heartbeat_sql, {current_time, node.node_id})
+                if not ok then
+                    ngx.log(ngx.ERR, "更新節點心跳失敗: ", node.node_id, " - ", (err or "unknown error"))
+                else
+                    ngx.log(ngx.DEBUG, "節點健康檢查成功，更新心跳: ", node.node_id, " 時間: ", current_time)
+                end
+            end
+        elseif node.status == 'offline' then
+            -- 檢查離線節點是否恢復
+            local is_healthy = perform_health_check(node.node_id, node.ip)
+            if is_healthy then
+                -- 更新節點狀態為恢復中，同時更新 last_heartbeat
+                local update_sql = "UPDATE node SET status = 'recovering', last_heartbeat = ? WHERE node_id = ?"
+                local ok, err = db:query(update_sql, {current_time, node.node_id})
+                if not ok then
+                    ngx.log(ngx.ERR, "更新節點恢復狀態失敗: ", node.node_id, " - ", (err or "unknown error"))
+                else
+                    table.insert(recovering_nodes, node)
+                    ngx.log(ngx.INFO, "節點開始恢復: ", node.node_id, " 時間: ", current_time)
+                end
+                
+                -- 設置恢復計時器
+                fault_detector:set("recovery_start_" .. node.node_id, current_time)
+            end
+        elseif node.status == 'recovering' then
+            -- 檢查恢復中的節點
+            local recovery_start = fault_detector:get("recovery_start_" .. node.node_id) or 0
+            if current_time - recovery_start >= CONFIG.recovery_timeout then
+                -- 更新節點狀態為在線，同時更新 last_heartbeat
+                local update_sql = "UPDATE node SET status = 'online', last_heartbeat = ? WHERE node_id = ?"
+                local ok, err = db:query(update_sql, {current_time, node.node_id})
+                if not ok then
+                    ngx.log(ngx.ERR, "更新節點在線狀態失敗: ", node.node_id, " - ", (err or "unknown error"))
+                else
+                    ngx.log(ngx.INFO, "節點恢復完成: ", node.node_id, " 時間: ", current_time)
+                end
+                
+                -- 清理恢復計時器
+                fault_detector:delete("recovery_start_" .. node.node_id)
+            end
         end
     end
     
-    -- 檢查節點恢復
-    check_for_node_recovery(db)
+    -- 處理故障轉移
+    if #offline_nodes > 0 then
+        for _, node in ipairs(offline_nodes) do
+            handle_node_failover(db, node.node_id)
+        end
+        
+        -- 更新故障轉移統計
+        health_checker:set("last_failover", current_time)
+        health_checker:set("failover_count", (health_checker:get("failover_count") or 0) + 1)
+    end
     
     db:close()
     return true
@@ -136,218 +323,20 @@ local function handle_node_failover(db, failed_node_id)
     
     ngx.log(ngx.INFO, "將 ", #affected_monitors, " 個監控器從 ", failed_node_id, " 轉移到 ", #online_nodes, " 個可用節點")
     
-    -- 使用智能分配策略
-    local node_loads = get_node_monitor_counts(db, online_nodes)
-    local reassignments = 0
-    
+    -- 簡單的輪詢分配策略
+    local node_index = 1
     for _, monitor in ipairs(affected_monitors) do
-        -- 選擇負載最輕的節點
-        local target_node = select_least_loaded_node(node_loads)
-        if target_node then
-            local update_sql = "UPDATE monitor SET assigned_node = ? WHERE id = ?"
-            db:query(update_sql, {target_node, monitor.id})
-            
-            -- 更新負載計數
-            node_loads[target_node] = (node_loads[target_node] or 0) + 1
-            reassignments = reassignments + 1
-            
-            ngx.log(ngx.INFO, "轉移監控器 \"", monitor.name, "\" (ID: ", monitor.id, ") 從 ", failed_node_id, " 到 ", target_node)
-        end
-    end
-    
-    ngx.log(ngx.INFO, "節點故障轉移完成: ", failed_node_id, "，重新分配了 ", reassignments, " 個監控器")
-end
-
--- 獲取節點的監控器數量
-local function get_node_monitor_counts(db, nodes)
-    local counts = {}
-    
-    for _, node in ipairs(nodes) do
-        local count_sql = "SELECT COUNT(*) as count FROM monitor WHERE assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)"
-        local count_result, err = db:query(count_sql, {node.node_id, node.node_id})
+        local target_node = online_nodes[node_index].node_id
+        local update_sql = "UPDATE monitor SET assigned_node = ? WHERE id = ?"
+        db:query(update_sql, {target_node, monitor.id})
         
-        if count_result and count_result[1] then
-            counts[node.node_id] = tonumber(count_result[1].count) or 0
-        else
-            counts[node.node_id] = 0
-        end
-    end
-    
-    return counts
-end
-
--- 選擇負載最輕的節點
-local function select_least_loaded_node(node_loads)
-    local min_load = math.huge
-    local selected_node = nil
-    
-    for node_id, load in pairs(node_loads) do
-        if load < min_load then
-            min_load = load
-            selected_node = node_id
-        end
-    end
-    
-    return selected_node
-end
-
--- 檢查節點恢復並觸發重新平衡
-local function check_for_node_recovery()
-    local db = get_db_connection()
-    if not db then
-        return
-    end
-    
-    local all_nodes_sql = "SELECT node_id, status FROM node"
-    local all_nodes, err = db:query(all_nodes_sql)
-    
-    if not all_nodes then
-        db:close()
-        return
-    end
-    
-    local online_nodes = {}
-    for _, node in ipairs(all_nodes) do
-        if node.status == "online" then
-            table.insert(online_nodes, node)
-        end
-    end
-    
-    if #online_nodes <= 1 then
-        db:close()
-        return
-    end
-    
-    -- 檢查是否需要觸發重新平衡
-    local should_rebalance = should_trigger_rebalancing(db, online_nodes)
-    
-    if should_rebalance then
-        ngx.log(ngx.INFO, "由於節點變化觸發監控器重新平衡")
-        rebalance_monitors(db, online_nodes)
-    end
-    
-    db:close()
-end
-
--- 檢查是否應該觸發重新平衡
-local function should_trigger_rebalancing(db, online_nodes)
-    -- 檢查是否有未分配的監控器
-    local unassigned_count_sql = "SELECT COUNT(*) as count FROM monitor WHERE assigned_node IS NULL AND (node_id IS NULL OR node_id = '')"
-    local unassigned_result, err = db:query(unassigned_count_sql)
-    
-    if unassigned_result and unassigned_result[1] and unassigned_result[1].count > 0 then
-        ngx.log(ngx.INFO, "發現 ", unassigned_result[1].count, " 個未分配的監控器，觸發重新平衡")
-        return true
-    end
-    
-    -- 檢查監控器分佈是否不平衡
-    local monitor_counts = get_node_monitor_counts(db, online_nodes)
-    
-    local counts = {}
-    for _, count in pairs(monitor_counts) do
-        table.insert(counts, count)
-    end
-    
-    if #counts == 0 then
-        return false
-    end
-    
-    local max_count = math.max(table.unpack(counts))
-    local min_count = math.min(table.unpack(counts))
-    local avg_count = 0
-    
-    for _, count in ipairs(counts) do
-        avg_count = avg_count + count
-    end
-    avg_count = avg_count / #counts
-    
-    -- 如果最大值和最小值的差異 > 平均值的 30%，觸發重新平衡
-    local imbalance_threshold = avg_count * 0.3
-    if max_count - min_count > imbalance_threshold and avg_count > 2 then
-        ngx.log(ngx.INFO, "檢測到監控器分佈不平衡 (max: ", max_count, ", min: ", min_count, ", avg: ", string.format("%.1f", avg_count), ")，觸發重新平衡")
-        return true
-    end
-    
-    return false
-end
-
--- 重新平衡監控器
-local function rebalance_monitors(db, online_nodes)
-    if #online_nodes == 0 then
-        ngx.log(ngx.WARN, "沒有可用的在線節點進行重新平衡")
-        return
-    end
-    
-    ngx.log(ngx.INFO, "開始在 ", #online_nodes, " 個節點間重新平衡監控器")
-    
-    -- 獲取所有監控器
-    local all_monitors_sql = "SELECT id, name, assigned_node, node_id FROM monitor ORDER BY id"
-    local all_monitors, err = db:query(all_monitors_sql)
-    
-    if not all_monitors or #all_monitors == 0 then
-        ngx.log(ngx.INFO, "沒有需要重新平衡的監控器")
-        return
-    end
-    
-    -- 使用智能分配策略
-    local node_loads = {}
-    for _, node in ipairs(online_nodes) do
-        node_loads[node.node_id] = 0
-    end
-    
-    local reassignments = 0
-    
-    for _, monitor in ipairs(all_monitors) do
-        -- 選擇負載最輕的節點
-        local target_node = select_least_loaded_node(node_loads)
-        local effective_node = monitor.assigned_node or monitor.node_id or nil
+        ngx.log(ngx.INFO, "轉移監控器 \"", monitor.name, "\" (ID: ", monitor.id, ") 從 ", failed_node_id, " 到 ", target_node)
         
-        -- 只有當分配與有效節點不同時才更新
-        if effective_node ~= target_node then
-            local update_sql = "UPDATE monitor SET assigned_node = ? WHERE id = ?"
-            db:query(update_sql, {target_node, monitor.id})
-            reassignments = reassignments + 1
-            
-            -- 更新負載計數
-            node_loads[target_node] = node_loads[target_node] + 1
-            
-            ngx.log(ngx.DEBUG, "重新分配監控器 \"", monitor.name, "\" (ID: ", monitor.id, ") 從 ", (effective_node or "unassigned"), " 到 ", target_node)
-        else
-            -- 更新負載計數（即使沒有重新分配）
-            if target_node then
-                node_loads[target_node] = node_loads[target_node] + 1
-            end
-        end
+        -- 輪詢到下一個節點
+        node_index = (node_index % #online_nodes) + 1
     end
     
-    if reassignments > 0 then
-        ngx.log(ngx.INFO, "重新平衡完成，重新分配了 ", reassignments, " 個監控器")
-    else
-        ngx.log(ngx.INFO, "不需要重新分配監控器 - 分佈已經最優")
-    end
-end
-
--- 手動觸發監控器重新平衡
-local function trigger_manual_rebalancing()
-    ngx.log(ngx.INFO, "手動觸發重新平衡")
-    
-    local db = get_db_connection()
-    if not db then
-        return false
-    end
-    
-    local online_nodes_sql = "SELECT node_id FROM node WHERE status = 'online'"
-    local online_nodes, err = db:query(online_nodes_sql)
-    
-    if not online_nodes then
-        db:close()
-        return false
-    end
-    
-    rebalance_monitors(db, online_nodes)
-    db:close()
-    
-    return true
+    ngx.log(ngx.INFO, "節點故障轉移完成: ", failed_node_id, "，重新分配了 ", #affected_monitors, " 個監控器")
 end
 
 -- 獲取節點狀態概覽
@@ -397,6 +386,40 @@ local function get_node_status_overview()
         nodes = nodes,
         total_nodes = #nodes,
         online_nodes = #nodes > 0 and #nodes or 0,
+        timestamp = os.time(),
+        config = CONFIG
+    }
+end
+
+-- 獲取健康檢查統計資訊
+local function get_health_check_statistics()
+    return {
+        last_heartbeat = health_checker:get("last_heartbeat") or 0,
+        heartbeat_count = health_checker:get("heartbeat_count") or 0,
+        last_failover = health_checker:get("last_failover") or 0,
+        failover_count = health_checker:get("failover_count") or 0,
+        timestamp = os.time()
+    }
+end
+
+-- 獲取故障檢測狀態概覽
+local function get_fault_detection_status()
+    local last_cycle = fault_detector and fault_detector:get("last_cycle") or 0
+    local last_summary_json = fault_detector and fault_detector:get("last_summary") or nil
+    local last_summary = nil
+    
+    if last_summary_json then
+        local ok, decoded = pcall(cjson.decode, last_summary_json)
+        if ok then
+            last_summary = decoded
+        end
+    end
+    
+    return {
+        last_cycle = last_cycle,
+        last_summary = last_summary or { checked = 0, failed = 0, recovered = 0 },
+        scan_count = fault_detector and fault_detector:get("scan_count") or 0,
+        config = CONFIG,
         timestamp = os.time()
     }
 end
@@ -404,7 +427,10 @@ end
 -- 導出函數
 return {
     send_heartbeat = send_heartbeat,
+    scan_all_nodes = scan_all_nodes,
     check_nodes_and_handle_failover = check_nodes_and_handle_failover,
-    trigger_manual_rebalancing = trigger_manual_rebalancing,
-    get_node_status_overview = get_node_status_overview
+    get_node_status_overview = get_node_status_overview,
+    get_health_check_statistics = get_health_check_statistics,
+    get_fault_detection_status = get_fault_detection_status,
+    CONFIG = CONFIG
 }
