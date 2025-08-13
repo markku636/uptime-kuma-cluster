@@ -1,0 +1,117 @@
+### Kuma API 測試文件
+### 進入後台 > 設定 > api token ，建立並取得api token
+### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
+
+# 基礎 URL 配置
+@baseUrl = http://localhost:3001
+@apiKey = uk1_fcy2lMrDQrjmhmk05dzgZxVE3qH_rrbF5LBukF1O
+
+### 1. 測試 API 狀態
+GET {{baseUrl}}/api/v1/status
+
+### 2. 使用 API Key 查詢 ID 為 1 的 monitor
+GET {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+
+### 3. 獲取所有 monitors
+GET {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+
+### 4. 測試其他節點 (如果負載均衡器配置正確)
+GET http://localhost:3002/api/v1/monitors/1
+Authorization: {{apiKey}}
+
+GET http://localhost:3003/api/v1/monitors/1
+Authorization: {{apiKey}}
+
+### 5. 通過負載均衡器訪問 (端口 80)
+GET http://localhost/api/v1/monitors/1
+Authorization: {{apiKey}}
+
+### 6. 獲取 monitor 的心跳數據
+GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
+Authorization: {{apiKey}}
+
+### 7. 測試 API 文檔
+GET {{baseUrl}}/api-docs
+
+### 8. 測試健康檢查
+GET {{baseUrl}}/health
+
+### 9. 創建一個新的 HTTP monitor
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試網站",
+  "type": "http",
+  "url": "https://httpbin.org/status/200",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "node_id": "node1"
+}
+
+### 10. 創建一個 Ping monitor
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試 Ping",
+  "type": "ping",
+  "hostname": "8.8.8.8",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30
+}
+
+### 11. 創建一個 DNS monitor
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試 DNS",
+  "type": "dns",
+  "hostname": "google.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30
+}
+
+### 12. 更新 monitor (假設 ID 為 2)
+PUT {{baseUrl}}/api/v1/monitors/2
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "更新後的監控器名稱",
+  "interval": 120
+}
+
+### 13. 刪除 monitor (假設 ID 為 2)
+DELETE {{baseUrl}}/api/v1/monitors/2
+Authorization: {{apiKey}}
+
+### 14. 暫停 monitor
+PUT {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "active": false
+}
+
+### 15. 啟用 monitor
+PUT {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "active": true
+}
+

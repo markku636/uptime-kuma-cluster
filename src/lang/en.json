@@ -304,6 +304,8 @@
     "Assigned Node": "Assigned Node",
     "assignedNodePlaceholder": "Select which node should run this monitor",
     "assignedNodeDescription": "Specify which node should run this monitor. Leave empty to allow any node to run it.",
+    "Default Node": "Default Node",
+    "defaultNodeDescription": "Specify the default node for this monitor. Used for load balancing and failover.",
     "Node Management": "Node Management",
     "Nodes": "Nodes",
     "Node ID": "Node ID",

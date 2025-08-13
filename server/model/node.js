@@ -29,44 +29,72 @@ class Node extends BeanModel {
      * @returns {Promise<Node>} Created or updated node
      */
     static async createOrUpdate(nodeId, nodeName, ip = null, isPrimary = false) {
-        let node = await Node.getByNodeId(nodeId);
-        
-        if (node) {
-            // Update existing node
-            node.node_name = nodeName;
-            node.ip = ip;
-            node.modified_date = R.isoDateTime();
-            // Handle primary node setting
-            const currentlyPrimary = !!(node.is_primary || node.is_primary === 1);
-            if (isPrimary && !currentlyPrimary) {
-                await Node.setPrimaryNode(nodeId);
-                return await Node.getByNodeId(nodeId); // Reload to get updated data
-            } else if (!isPrimary) {
-                node.is_primary = 0; // Use 0 for MariaDB TINYINT
-            }
-            await R.store(node);
-            log.info("node", `Updated node: ${nodeId} (${nodeName})`);
-        } else {
-            // Create new node
-            node = R.dispense("node");
-            node.node_id = nodeId;
-            node.node_name = nodeName;
-            node.ip = ip;
-            node.is_primary = isPrimary ? 1 : 0; // Use 1/0 for MariaDB TINYINT
-            node.created_date = R.isoDateTime();
-            node.modified_date = R.isoDateTime();
+        try {
+            // 先檢查節點是否已存在
+            let node = await Node.getByNodeId(nodeId);
             
-            // If this is set as primary, ensure no other nodes are primary
-            if (isPrimary) {
-                await Node.clearAllPrimaryFlags();
-                node.is_primary = 1; // Use 1 for MariaDB TINYINT
+            if (node) {
+                // Update existing node
+                log.debug("node", `Updating existing node: ${nodeId} (${nodeName})`);
+                node.node_name = nodeName;
+                node.ip = ip;
+                node.modified_date = R.isoDateTime();
+                node.status = "online"; // 確保狀態為在線
+                node.last_seen = R.isoDateTime();
+                
+                // Handle primary node setting
+                const currentlyPrimary = !!(node.is_primary || node.is_primary === 1);
+                if (isPrimary && !currentlyPrimary) {
+                    await Node.setPrimaryNode(nodeId);
+                    return await Node.getByNodeId(nodeId); // Reload to get updated data
+                } else if (!isPrimary) {
+                    node.is_primary = 0; // Use 0 for MariaDB TINYINT
+                }
+                await R.store(node);
+                log.info("node", `Updated node: ${nodeId} (${nodeName})`);
+            } else {
+                // Create new node
+                log.debug("node", `Creating new node: ${nodeId} (${nodeName})`);
+                node = R.dispense("node");
+                node.node_id = nodeId;
+                node.node_name = nodeName;
+                node.ip = ip;
+                node.is_primary = isPrimary ? 1 : 0; // Use 1/0 for MariaDB TINYINT
+                node.status = "online"; // 新節點預設為在線
+                node.created_date = R.isoDateTime();
+                node.modified_date = R.isoDateTime();
+                node.last_seen = R.isoDateTime();
+                
+                // If this is set as primary, ensure no other nodes are primary
+                if (isPrimary) {
+                    await Node.clearAllPrimaryFlags();
+                    node.is_primary = 1; // Use 1 for MariaDB TINYINT
+                }
+                
+                await R.store(node);
+                log.info("node", `Created node: ${nodeId} (${nodeName})`);
             }
             
-            await R.store(node);
-            log.info("node", `Created node: ${nodeId} (${nodeName})`);
+            return node;
+        } catch (error) {
+            log.error("node", `Error in createOrUpdate for node ${nodeId}: ${error.message}`);
+            
+            // 如果是主鍵重複錯誤，嘗試獲取現有節點
+            if (error.code === 'ER_DUP_ENTRY' || error.message.includes('Duplicate entry')) {
+                log.warn("node", `Duplicate entry detected for node ${nodeId}, attempting to retrieve existing node`);
+                try {
+                    const existingNode = await Node.getByNodeId(nodeId);
+                    if (existingNode) {
+                        log.info("node", `Successfully retrieved existing node: ${nodeId}`);
+                        return existingNode;
+                    }
+                } catch (retrieveError) {
+                    log.error("node", `Failed to retrieve existing node ${nodeId}: ${retrieveError.message}`);
+                }
+            }
+            
+            throw error; // 重新拋出錯誤
         }
-        
-        return node;
     }
 
     /**
@@ -101,12 +129,40 @@ class Node extends BeanModel {
     static async initializeFromEnv() {
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
         if (currentNodeId) {
-            // Try to get IP from environment or use localhost
-            const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
-            // Use node ID as default name if no name is provided
-            const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
-            
-            await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, false);
+            try {
+                // 先檢查節點是否已存在
+                const existingNode = await Node.getByNodeId(currentNodeId);
+                if (existingNode) {
+                    log.info("node", `Node ${currentNodeId} already exists, skipping creation. Current status: ${existingNode.status || 'unknown'}`);
+                    
+                    // 更新現有節點的基本信息（IP、名稱等）
+                    const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
+                    const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
+                    
+                    // 只更新必要的信息，不改變主節點狀態
+                    existingNode.node_name = nodeName;
+                    existingNode.ip = nodeIp;
+                    existingNode.modified_date = R.isoDateTime();
+                    existingNode.status = "online"; // 標記為在線
+                    existingNode.last_seen = R.isoDateTime();
+                    
+                    await R.store(existingNode);
+                    log.info("node", `Updated existing node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
+                    return;
+                }
+                
+                // 節點不存在，創建新節點
+                const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
+                const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
+                
+                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
+                await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, false);
+                
+            } catch (error) {
+                log.error("node", `Failed to initialize node ${currentNodeId}: ${error.message}`);
+                // 不要讓節點初始化失敗阻止整個應用啟動
+                // 可以考慮重試或使用預設值
+            }
         } else {
             // No environment variables set, ensure we have at least one default node
             const existingNodes = await Node.getAll();

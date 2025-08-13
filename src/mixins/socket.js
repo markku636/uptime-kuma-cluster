@@ -201,8 +201,10 @@ export default {
             socket.on("nodeList", (data) => {
                 this.nodeList = {};
                 data.forEach(node => {
-                    this.nodeList[node.id] = node;
+                    // 使用 nodeId 作為鍵值，這樣與前端期望的資料結構一致
+                    this.nodeList[node.nodeId] = node;
                 });
+                console.log("節點列表已更新:", this.nodeList);
             });
 
             socket.on("heartbeat", (data) => {

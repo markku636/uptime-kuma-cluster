@@ -69,19 +69,18 @@ services:
       - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d:ro
       - ./nginx/ssl:/usr/local/openresty/nginx/conf/ssl:ro
       - ./nginx/logs:/usr/local/openresty/nginx/logs
-      # 將專案內的 Lua 模組掛載到 nginx/lua，避免覆蓋容器內建 lualib（含 emmy_core.so）
-      - ./lua:/usr/local/openresty/nginx/lua:ro
+      # Lua 調試庫已通過 Dockerfile 複製到容器中，無需掛載
     environment:
       - DB_HOST=mariadb
       - DB_PORT=3306
       - DB_USER=kuma
       - DB_PASSWORD=kuma_pass
       - DB_NAME=kuma
-      - UPTIME_KUMA_NODE_ID=nginx-node
-      - NODE_ID=nginx-node
-      # EmmyLua Debugger 設定（可選）：外部 IDE 連線資訊，例：127.0.0.1:9966
-      # - EMMY_DEBUG_HOST=host.docker.internal
-      # - EMMY_DEBUG_PORT=9966
+      - "9966:9966"
+      # EmmyLua Debugger 設定：啟用調試功能
+      - EMMY_DEBUG_ENABLED=true
+      - EMMY_DEBUG_HOST=0.0.0.0
+      - EMMY_DEBUG_PORT=9966
     depends_on:
       - mariadb
       - uptime-kuma-node1

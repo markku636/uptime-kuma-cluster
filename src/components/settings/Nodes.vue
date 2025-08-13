@@ -205,7 +205,8 @@ export default {
                 if (res.ok) {
                     this.$root.nodeList = {};
                     res.nodes.forEach(node => {
-                        this.$root.nodeList[node.id] = node;
+                        // 使用 nodeId 作為鍵值，與 socket mixin 保持一致
+                        this.$root.nodeList[node.nodeId] = node;
                     });
                 }
             });

@@ -814,7 +814,7 @@
                                 </div>
                             </div>
 
-                            <!-- Default Node (node_id) -->
+                            <!-- Default Node (node_id) - Moved above assigned node -->
                             <div class="my-3">
                                 <label for="default-node" class="form-label">{{ $t('Default Node') }}</label>
                                 <ActionSelect
@@ -1784,7 +1784,8 @@ message HealthCheckResponse {
                     this.$root.nodeList = {};
                     res.nodes.forEach(node => {
                         console.log("Adding node to global list:", node);
-                        this.$root.nodeList[node.id] = node;
+                        // 使用 nodeId 作為鍵值，與 socket mixin 保持一致
+                        this.$root.nodeList[node.nodeId] = node;
                     });
                     // Force reactivity update
                     this.$forceUpdate();

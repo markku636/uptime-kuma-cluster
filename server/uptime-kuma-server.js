@@ -571,6 +571,45 @@ class UptimeKumaServer {
             }
         }
     }
+
+    /**
+     * Start a monitor (same logic as server.js startMonitor)
+     * @param {number} userID User ID who owns the monitor
+     * @param {number} monitorID Monitor ID to start
+     * @returns {Promise<void>}
+     */
+    async startMonitor(userID, monitorID) {
+        const { R } = require("redbean-node");
+        const { log } = require("../src/util");
+        
+        log.info("manage", `Resume Monitor: ${monitorID} User ID: ${userID}`);
+
+        await R.exec("UPDATE monitor SET active = 1 WHERE id = ? AND user_id = ? ", [
+            monitorID,
+            userID,
+        ]);
+
+        let monitor = await R.findOne("monitor", " id = ? ", [
+            monitorID,
+        ]);
+
+        if (monitor.id in this.monitorList) {
+            await this.monitorList[monitor.id].stop();
+        }
+
+        this.monitorList[monitor.id] = monitor;
+        await monitor.start(this.io);
+    }
+
+    /**
+     * Restart a monitor (same logic as server.js restartMonitor)
+     * @param {number} userID User ID who owns the monitor
+     * @param {number} monitorID Monitor ID to restart
+     * @returns {Promise<void>}
+     */
+    async restartMonitor(userID, monitorID) {
+        return await this.startMonitor(userID, monitorID);
+    }
 }
 
 module.exports = {

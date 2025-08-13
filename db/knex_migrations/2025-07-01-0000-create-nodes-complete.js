@@ -15,21 +15,33 @@ CREATE TABLE node (
 exports.up = async function (knex) {
     const hasTable = await knex.schema.hasTable("node");
     if (!hasTable) {
-        return knex.schema.createTable("node", function (table) {
-            table.increments("id").primary();
-            table.string("node_id", 255).notNullable().unique();
-            table.string("node_name", 255).notNullable();
-            table.string("ip", 255).nullable();
-            table.boolean("is_primary").defaultTo(false);
-            table.string("status", 20).defaultTo("unknown");
-            table.dateTime("last_heartbeat").nullable();
-            table.text("last_error_message").nullable();
-
-            table.dateTime("created_date").defaultTo(knex.fn.now());
-            table.dateTime("modified_date").defaultTo(knex.fn.now());
+        return knex.schema.createTable("node", function (table) {            
+            // 主鍵
+            table.string('node_id', 50).primary();
+            
+            // 基本資訊
+            table.string('node_name', 100).notNullable();
+            table.string('location', 200);
+            table.string('ip', 45);
+            table.string('hostname', 100);
+            
+            // 狀態相關
+            table.string('status', 20).defaultTo('online');
+            table.boolean('active').defaultTo(true);
+            table.boolean('is_primary').defaultTo(false);
+            
+            // 時間戳記
+            table.timestamp('created_date').defaultTo(knex.fn.now());
+            table.timestamp('modified_date').defaultTo(knex.fn.now());
+            table.timestamp('last_seen').defaultTo(knex.fn.now());
+            
+            // 索引
+            table.index(['node_name'], 'idx_node_name');
+            table.index(['status'], 'idx_node_status');
+            table.index(['active'], 'idx_node_active');
+            table.index(['is_primary'], 'idx_node_is_primary');
         });
     }
-    // Table already exists, do nothing
     return Promise.resolve();
 };
 

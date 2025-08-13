@@ -1159,5 +1159,7 @@
     "Unique identifier for this node (cannot be changed after creation)": "此節點的唯一識別碼（創建後無法更改）",
     "Friendly name for this node": "此節點的友善名稱",
     "Optional IP address for this node": "此節點的選填 IP 位址",
-    "Optional version number for this node": "此節點的選填版本號"
+    "Optional version number for this node": "此節點的選填版本號",
+    "Default Node": "預設節點",
+    "defaultNodeDescription": "指定此監測器的預設節點。用於負載平衡和故障轉移。"
 }
