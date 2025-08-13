@@ -13,25 +13,13 @@ const options = {
             contact: {
                 name: "Uptime Kuma",
                 url: "https://github.com/louislam/uptime-kuma"
-            },
-            license: {
-                name: "MIT",
-                url: "https://github.com/louislam/uptime-kuma/blob/master/LICENSE"
-            }
+            },           
         },
         servers: [
             {
-                url: "http://localhost:3001/api/v1",
+                url: "/",
                 description: "Uptime Kuma REST API v1 (Development)"
-            },
-            {
-                url: "/api/v1",
-                description: "Uptime Kuma REST API v1"
-            },
-            {
-                url: "/api",
-                description: "Uptime Kuma General API"
-            }
+            },          
         ],
         components: {
             securitySchemes: {
@@ -46,7 +34,7 @@ const options = {
                     in: "header",
                     name: "Authorization",
                     description: "API key authorization header. Example: \"Authorization: {api_key}\""
-                }
+                }                             
             }
         },
         security: [
@@ -92,7 +80,7 @@ const options = {
         path.resolve(__dirname, "routers", "rest-api-router.js"),
         path.resolve(__dirname, "routers", "api-router.js"),
         path.resolve(__dirname, "routers", "status-page-router.js"),
-        path.resolve(__dirname, "swagger.js")
+        // path.resolve(__dirname, "swagger.js")
     ]
 };
 
@@ -116,7 +104,7 @@ try {
 }
 
 const swaggerOptions = {
-    explorer: false, // Disable the Explorer bar to prevent external URL loading
+    explorer: true, // 啟用 Explorer bar
     customSiteTitle: "Uptime Kuma API Documentation",
     customfavIcon: "/favicon.ico",
     swaggerOptions: {
@@ -134,8 +122,8 @@ const swaggerOptions = {
         tagsSorter: 'alpha',
         validatorUrl: null, // Disable validator to prevent external requests
         plugins: [],
-        layout: "StandaloneLayout", // Use standalone layout to prevent external loading
-        url: undefined, // Explicitly prevent default URL loading
+        layout: "BaseLayout", // Use standalone layout to prevent external loading
+        url: "/api-docs.json", // 設定預設的 JSON 端點
         urls: undefined // Explicitly prevent default URLs loading
     },
     customCss: `
