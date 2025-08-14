@@ -321,9 +321,23 @@ router.get("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *               interval:
  *                 type: integer
  *                 example: 60
+ *               node_id:
+ *                 type: string
+ *                 maxLength: 50
+ *                 description: Node ID to assign the monitor to
+ *                 example: "node1"
  *               active:
  *                 type: boolean
  *                 example: true
+ *               retryInterval:
+ *                 type: integer
+ *                 example: 60
+ *               maxretries:
+ *                 type: integer
+ *                 example: 0
+ *               timeout:
+ *                 type: integer
+ *                 example: 48
  *     responses:
  *       201:
  *         description: Monitor created successfully
@@ -343,8 +357,13 @@ router.get("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *                   properties:
  *                     monitorID:
  *                       type: integer
+ *                       description: Created monitor ID
+ *                     node_id:
+ *                       type: string
+ *                       description: Assigned node ID
+ *                       nullable: true
  *       400:
- *         description: Validation error
+ *         description: Validation error or node not found
  *         content:
  *           application/json:
  *             schema:
@@ -354,7 +373,8 @@ router.post("/api/v1/monitors", authenticateToken, [
     body("name").notEmpty().withMessage("Name is required"),
     body("type").notEmpty().withMessage("Type is required"),
     body("url").isURL().withMessage("Valid URL is required"),
-    body("interval").isInt({ min: 20 }).withMessage("Interval must be at least 20 seconds")
+    body("interval").isInt({ min: 20 }).withMessage("Interval must be at least 20 seconds"),
+    body("node_id").optional().isLength({ max: 50 }).withMessage("Node ID must be 50 characters or less")
 ], async (req, res) => {
     try {
         allowAllOrigin(res);
@@ -368,6 +388,18 @@ router.post("/api/v1/monitors", authenticateToken, [
             });
         }
         
+        // 檢查 node_id 是否存在（如果提供）
+        if (req.body.node_id) {
+            // 修正：使用 node_id 欄位而不是 name 欄位
+            const node = await R.findOne("node", " node_id = ? ", [req.body.node_id]);
+            if (!node) {
+                return res.status(400).json({
+                    ok: false,
+                    msg: "Specified node not found"
+                });
+            }
+        }
+        
         const monitor = R.dispense("monitor");
         monitor.name = req.body.name;
         monitor.type = req.body.type;
@@ -375,6 +407,11 @@ router.post("/api/v1/monitors", authenticateToken, [
         monitor.interval = req.body.interval || 60;
         monitor.active = req.body.active !== false;
         monitor.user_id = req.userId;
+        
+        // 設定 node_id（如果提供）
+        if (req.body.node_id) {
+            monitor.node_id = req.body.node_id;
+        }
         
         // Set default values
         monitor.retryInterval = req.body.retryInterval || 60;
@@ -384,11 +421,20 @@ router.post("/api/v1/monitors", authenticateToken, [
         
         await R.store(monitor);
         
+        // Activate the monitor if it's active (same logic as UI creation)
+        if (monitor.active !== false) {
+            const server = UptimeKumaServer.getInstance();
+            if (server && server.startMonitor) {
+                await server.startMonitor(req.userId, monitor.id);
+            }
+        }
+        
         res.status(201).json({
             ok: true,
             msg: "Monitor created successfully",
             data: {
-                monitorID: monitor.id
+                monitorID: monitor.id,
+                node_id: monitor.node_id || null
             }
         });
     } catch (error) {
@@ -453,6 +499,14 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
         if (req.body.active !== undefined) monitor.active = req.body.active;
         
         await R.store(monitor);
+        
+        // Restart the monitor if it's active (same logic as UI editing)
+        if (monitor.active !== false) {
+            const server = UptimeKumaServer.getInstance();
+            if (server && server.restartMonitor) {
+                await server.restartMonitor(req.userId, monitor.id);
+            }
+        }
         
         res.json({
             ok: true,
@@ -622,6 +676,427 @@ router.get("/api/v1/notifications", authenticateToken, async (req, res) => {
         res.json({
             ok: true,
             data: notifications.map(n => n.toJSON())
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes:
+ *   get:
+ *     summary: Get all nodes
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of nodes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Node'
+ */
+router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const nodes = await R.getAll(`
+            SELECT 
+                id,
+                node_id,
+                node_name,
+                ip,
+                is_primary,
+                status,
+                last_heartbeat,
+                last_error_message,
+                create
+            FROM node 
+            ORDER BY node_id ASC
+        `);
+        
+        res.json({
+            ok: true,
+            data: nodes
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes/{id}:
+ *   get:
+ *     summary: Get node by ID
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Node ID
+ *     responses:
+ *       200:
+ *         description: Node details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Node'
+ *       404:
+ *         description: Node not found
+ */
+router.get("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const nodeId = req.params.id; // 注意：這裡是字串，不是整數
+        
+        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
+        
+        if (!node) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Node not found"
+            });
+        }
+        
+        res.json({
+            ok: true,
+            data: node
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes:
+ *   post:
+ *     summary: Create a new node
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Node name
+ *                 example: "node1"
+ *               location:
+ *                 type: string
+ *                 description: Node location
+ *                 example: "Taipei, Taiwan"
+ *               ip:
+ *                 type: string
+ *                 description: Node IP address
+ *                 example: "192.168.1.100"
+ *               hostname:
+ *                 type: string
+ *                 description: Node hostname
+ *                 example: "server01"
+ *     responses:
+ *       201:
+ *         description: Node created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Node created successfully"
+ *                 data:
+ *                   $ref: '#/components/schemas/Node'
+ */
+router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const { node_id, node_name, ip, is_primary } = req.body;
+        
+        // Validation
+        if (!node_id) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Node ID is required"
+            });
+        }
+        
+        // Check if node_id already exists
+        const existingNode = await R.findOne("node", " node_id = ? ", [node_id]);
+        if (existingNode) {
+            return res.status(409).json({
+                ok: false,
+                msg: "Node ID already exists"
+            });
+        }
+        
+        // Create new node
+        const node = R.dispense("node");
+        node.node_id = node_id;
+        node.node_name = node_name || node_id;
+        node.ip = ip || "";
+        node.is_primary = is_primary || 0;
+        node.status = "online";
+        node.last_heartbeat = new Date();
+        node.create = new Date();
+        
+        await R.store(node);
+        
+        res.status(201).json({
+            ok: true,
+            msg: "Node created successfully",
+            data: node
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes/{id}:
+ *   put:
+ *     summary: Update node
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Node ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Node name
+ *               location:
+ *                 type: string
+ *                 description: Node location
+ *               ip:
+ *                 type: string
+ *                 description: Node IP address
+ *               hostname:
+ *                 type: string
+ *                 description: Node hostname
+ *               status:
+ *                 type: string
+ *                 description: Node status
+ *                 enum: [online, offline, maintenance]
+ *     responses:
+ *       200:
+ *         description: Node updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Node updated successfully"
+ *                 data:
+ *                   $ref: '#/components/schemas/Node'
+ */
+router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const nodeId = req.params.id; // 字串
+        const { node_name, ip, is_primary, status } = req.body;
+        
+        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
+        
+        if (!node) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Node not found"
+            });
+        }
+        
+        // Update node
+        if (node_name !== undefined) node.node_name = node_name;
+        if (ip !== undefined) node.ip = ip;
+        if (is_primary !== undefined) node.is_primary = is_primary;
+        if (status) node.status = status;
+        
+        await R.store(node);
+        
+        res.json({
+            ok: true,
+            msg: "Node updated successfully",
+            data: node
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes/{id}:
+ *   delete:
+ *     summary: Delete node
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Node ID
+ *     responses:
+ *       200:
+ *         description: Node deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Node deleted successfully"
+ */
+router.delete("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const nodeId = req.params.id; // 字串
+        
+        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
+        
+        if (!node) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Node not found"
+            });
+        }
+        
+        // Check if node is assigned to any monitors
+        const assignedMonitors = await R.findOne("monitor", " node_id = ? ", [nodeId]);
+        if (assignedMonitors) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Cannot delete node that is assigned to monitors"
+            });
+        }
+        
+        // Hard delete (since there's no active field)
+        await R.exec("DELETE FROM node WHERE node_id = ?", [nodeId]);
+        
+        res.json({
+            ok: true,
+            msg: "Node deleted successfully"
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/nodes/{id}/monitors:
+ *   get:
+ *     summary: Get monitors assigned to a specific node
+ *     tags: [Nodes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Node ID
+ *     responses:
+ *       200:
+ *         description: List of monitors assigned to the node
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Monitor'
+ */
+router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const nodeId = req.params.id; // 字串
+        
+        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
+        
+        if (!node) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Node not found"
+            });
+        }
+        
+        const monitors = await R.getAll(`
+            SELECT 
+                id, name, type, url, interval, active, status, 
+                created_date, last_check, uptime
+            FROM monitor 
+            WHERE node_id = ? AND active = 1
+            ORDER BY name ASC
+        `, [nodeId]);
+        
+        res.json({
+            ok: true,
+            data: monitors
         });
     } catch (error) {
         sendHttpError(res, error.message);

@@ -111,7 +111,7 @@ for i in $(seq 1 $TOTAL_NODES); do
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
       - UPTIME_KUMA_NODE_ID=node$i
       - UPTIME_KUMA_NODE_NAME=Node $i
-      - UPTIME_KUMA_NODE_IP=uptime-kuma-node$i
+      - UPTIME_KUMA_NODE_HOST=uptime-kuma-node$i:3001
     depends_on:
       - mariadb
     restart: unless-stopped

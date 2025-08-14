@@ -796,7 +796,7 @@
                                 <input id="description" v-model="monitor.description" type="text" class="form-control">
                             </div>
 
-                            <!-- Assigned Node -->
+                            <!-- Assigned Node (override). Default is node_id, this overrides for failover/load balancing) -->
                             
                             <div class="my-3">
                                 <label for="assigned-node" class="form-label">{{ $t("Assigned Node") }}</label>
@@ -811,6 +811,23 @@
                                 />
                                 <div class="form-text">
                                     {{ $t("assignedNodeDescription") }}
+                                </div>
+                            </div>
+
+                            <!-- Default Node (node_id) - Moved above assigned node -->
+                            <div class="my-3">
+                                <label for="default-node" class="form-label">{{ $t('Default Node') }}</label>
+                                <ActionSelect
+                                    id="default-node"
+                                    v-model="monitor.node_id"
+                                    :action-aria-label="$t('openModalTo', 'setup a new node')"
+                                    :options="nodeOptionsList"
+                                    :icon="'plus'"
+                                    :action="() => $router.push('/settings/nodes')"
+                                    :placeholder="$t('assignedNodePlaceholder')"
+                                />
+                                <div class="form-text">
+                                    {{ $t('defaultNodeDescription') }}
                                 </div>
                             </div>
 
@@ -1217,7 +1234,8 @@ const monitorDefaults = {
     rabbitmqUsername: "",
     rabbitmqPassword: "",
     conditions: [],
-    assigned_node: null
+    assigned_node: null,
+    node_id: null
 };
 
 export default {
@@ -1614,10 +1632,10 @@ message HealthCheckResponse {
         "$root.info": {
             handler(newInfo) {
                 // When root info becomes available and we're adding a new monitor,
-                // set the default assigned_node if it's not already set
-                if (this.isAdd && newInfo && newInfo.currentNodeId && !this.monitor.assigned_node) {
-                    console.log("Setting default assigned_node from $root.info.currentNodeId:", newInfo.currentNodeId);
-                    this.monitor.assigned_node = newInfo.currentNodeId;
+                // set the default node_id if it's not already set
+                if (this.isAdd && newInfo && newInfo.currentNodeId && !this.monitor.node_id) {
+                    console.log("Setting default node_id from $root.info.currentNodeId:", newInfo.currentNodeId);
+                    this.monitor.node_id = newInfo.currentNodeId;
                 }
             },
             deep: true,
@@ -1766,7 +1784,8 @@ message HealthCheckResponse {
                     this.$root.nodeList = {};
                     res.nodes.forEach(node => {
                         console.log("Adding node to global list:", node);
-                        this.$root.nodeList[node.id] = node;
+                        // 使用 nodeId 作為鍵值，與 socket mixin 保持一致
+                        this.$root.nodeList[node.nodeId] = node;
                     });
                     // Force reactivity update
                     this.$forceUpdate();
@@ -1829,9 +1848,9 @@ message HealthCheckResponse {
                     ping_per_request_timeout: 2,
                 };
 
-                // Set default assigned_node from environment variable
+                // Set default node_id from environment variable
                 if (this.$root.info && this.$root.info.currentNodeId) {
-                    this.monitor.assigned_node = this.$root.info.currentNodeId;
+                    this.monitor.node_id = this.$root.info.currentNodeId;
                 }
 
                 if (this.$root.proxyList && !this.monitor.proxyId) {
@@ -1860,10 +1879,10 @@ message HealthCheckResponse {
 
                         this.monitor = res.monitor;
 
-                        // For clones, it is a new monitor, so set default assigned_node from environment variable.
+                        // For clones, it is a new monitor, so set default node_id from environment variable.
                         // For edits, we keep the original value, even if it is null.
                         if (this.isClone && this.$root.info && this.$root.info.currentNodeId) {
-                            this.monitor.assigned_node = this.$root.info.currentNodeId;
+                            this.monitor.node_id = this.$root.info.currentNodeId;
                         }
 
                         if (this.isClone) {

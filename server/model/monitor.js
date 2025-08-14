@@ -169,6 +169,7 @@ class Monitor extends BeanModel {
             
             // load balancing
             assigned_node: this.assigned_node,
+            node_id: this.node_id,
         };
 
         if (includeSensitiveData) {

@@ -752,8 +752,8 @@ let needSetup = false;
                 bean.import(monitor);
                 bean.user_id = socket.userID;
                 
-                // load balancing - ensure assigned_node is properly set
-                bean.assigned_node = monitor.assigned_node;
+                // load balancing - default to node_id on creation, assigned_node is only for failover/override
+                bean.node_id = monitor.node_id;
 
                 bean.validate();
 
@@ -917,7 +917,7 @@ let needSetup = false;
                 bean.ping_per_request_timeout = monitor.ping_per_request_timeout;
                 
                 // load balancing
-                bean.assigned_node = monitor.assigned_node;
+                bean.node_id = monitor.node_id;
 
                 bean.validate();
 
@@ -1897,10 +1897,10 @@ async function startMonitors() {
     let whereClause = " active = 1 ";
     let params = [];
     
-    // Load balancing: filter monitors by assigned node
+    // Load balancing: filter monitors by effective node (assigned_node overrides node_id)
     if (currentNodeId) {
-        whereClause += " AND (assigned_node = ? OR assigned_node IS NULL) ";
-        params.push(currentNodeId);
+        whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+        params.push(currentNodeId, currentNodeId);
         log.info("server", `Starting monitors for node: ${currentNodeId}`);
     } else {
         log.info("server", "Starting all active monitors (no node filtering)");

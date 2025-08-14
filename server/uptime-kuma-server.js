@@ -199,10 +199,9 @@ class UptimeKumaServer {
         const Node = require("./model/node");
         await Node.initializeFromEnv();
 
-        // Start NodeManager for failover and load balancing
-        const { getNodeManager } = require("./node-manager");
-        this.nodeManager = getNodeManager();
-        this.nodeManager.start();
+        // NodeManager has been migrated to OpenResty/nginx
+        // Health checks and failover are now handled by nginx with Lua scripts
+        this.nodeManager = null;
 
         await this.loadMaintenanceList();
     }
@@ -257,7 +256,7 @@ class UptimeKumaServer {
             queryParams.push(monitorID);
         }
 
-        // Load balancing: filter monitors by assigned node
+        // Load balancing: filter monitors by effective node (assigned_node overrides node_id)
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
         if (currentNodeId) {
             // Check if this node exists in database
@@ -268,8 +267,8 @@ class UptimeKumaServer {
             } else {
                 log.debug("monitor", `[getMonitorJSONList] Filtering monitors for node: ${currentNodeId} (not in database)`);
             }
-            query += "AND (assigned_node = ? OR assigned_node IS NULL) ";
-            queryParams.push(currentNodeId);
+            query += "AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            queryParams.push(currentNodeId, currentNodeId);
         } else {
             log.debug("monitor", "[getMonitorJSONList] No node ID specified, returning all monitors");
         }
@@ -510,10 +509,8 @@ class UptimeKumaServer {
             await this.stopNSCDServices();
         }
 
-        // Stop NodeManager
-        if (this.nodeManager) {
-            this.nodeManager.stop();
-        }
+        // NodeManager has been migrated to OpenResty/nginx
+        // No need to stop NodeManager
     }
 
     /**
@@ -573,6 +570,45 @@ class UptimeKumaServer {
                 }
             }
         }
+    }
+
+    /**
+     * Start a monitor (same logic as server.js startMonitor)
+     * @param {number} userID User ID who owns the monitor
+     * @param {number} monitorID Monitor ID to start
+     * @returns {Promise<void>}
+     */
+    async startMonitor(userID, monitorID) {
+        const { R } = require("redbean-node");
+        const { log } = require("../src/util");
+        
+        log.info("manage", `Resume Monitor: ${monitorID} User ID: ${userID}`);
+
+        await R.exec("UPDATE monitor SET active = 1 WHERE id = ? AND user_id = ? ", [
+            monitorID,
+            userID,
+        ]);
+
+        let monitor = await R.findOne("monitor", " id = ? ", [
+            monitorID,
+        ]);
+
+        if (monitor.id in this.monitorList) {
+            await this.monitorList[monitor.id].stop();
+        }
+
+        this.monitorList[monitor.id] = monitor;
+        await monitor.start(this.io);
+    }
+
+    /**
+     * Restart a monitor (same logic as server.js restartMonitor)
+     * @param {number} userID User ID who owns the monitor
+     * @param {number} monitorID Monitor ID to restart
+     * @returns {Promise<void>}
+     */
+    async restartMonitor(userID, monitorID) {
+        return await this.startMonitor(userID, monitorID);
     }
 }
 

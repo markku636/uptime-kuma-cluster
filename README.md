@@ -2,195 +2,513 @@
     <img src="./public/icon.svg" width="128" alt="" />
 </div>
 
-# Uptime Kuma
+# Nginx OpenResty 負載平衡與健康檢查系統技術文檔
 
-Uptime Kuma is an easy-to-use self-hosted monitoring tool.
+## 📋 目錄
+1. [系統概述](#系統概述)
+2. [架構設計](#架構設計)
+3. [模組說明](#模組說明)
+4. [功能特性](#功能特性)
+5. [API 接口](#api-接口)
+6. [配置說明](#配置說明)
+7. [部署指南](#部署指南)
+8. [監控與維護](#監控與維護)
 
-<a target="_blank" href="https://github.com/louislam/uptime-kuma"><img src="https://img.shields.io/github/stars/louislam/uptime-kuma?style=flat" /></a> <a target="_blank" href="https://hub.docker.com/r/louislam/uptime-kuma"><img src="https://img.shields.io/docker/pulls/louislam/uptime-kuma" /></a> <a target="_blank" href="https://hub.docker.com/r/louislam/uptime-kuma"><img src="https://img.shields.io/docker/v/louislam/uptime-kuma/latest?label=docker%20image%20ver." /></a> <a target="_blank" href="https://github.com/louislam/uptime-kuma"><img src="https://img.shields.io/github/last-commit/louislam/uptime-kuma" /></a>  <a target="_blank" href="https://opencollective.com/uptime-kuma"><img src="https://opencollective.com/uptime-kuma/total/badge.svg?label=Open%20Collective%20Backers&color=brightgreen" /></a>
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/louislam?label=GitHub%20Sponsors)](https://github.com/sponsors/louislam) <a href="https://weblate.kuma.pet/projects/uptime-kuma/uptime-kuma/">
-<img src="https://weblate.kuma.pet/widgets/uptime-kuma/-/svg-badge.svg" alt="Translation status" />
-</a>
+---
 
-<img src="https://user-images.githubusercontent.com/1336778/212262296-e6205815-ad62-488c-83ec-a5b0d0689f7c.jpg" width="700" alt="" />
+## 🎯 系統概述
 
-## 🥔 Live Demo
+這是一個基於 Nginx OpenResty 的智能負載平衡和健康檢查系統，專為 Uptime Kuma 多節點部署設計。系統具備自動故障檢測、故障轉移、負載平衡和監控器重新分配等功能。
 
-Try it!
+### 主要特點
+- **智能負載平衡**：根據節點監控器數量自動分配請求
+- **主動健康檢查**：每60秒檢查節點健康狀態
+- **自動故障轉移**：節點故障時自動轉移監控器
+- **節點恢復管理**：5分鐘恢復機制，確保系統穩定性
+- **監控器重新平衡**：手動或自動重新分配監控器負載
 
-Demo Server (Location: Frankfurt - Germany): https://demo.kuma.pet/start-demo
+---
 
-It is a temporary live demo, all data will be deleted after 10 minutes. Sponsored by [Uptime Kuma Sponsors](https://github.com/louislam/uptime-kuma#%EF%B8%8F-sponsors).
+## 🏗️ 架構設計
 
-## ⭐ Features
-
-- Monitoring uptime for HTTP(s) / TCP / HTTP(s) Keyword / HTTP(s) Json Query / Ping / DNS Record / Push / Steam Game Server / Docker Containers
-- Fancy, Reactive, Fast UI/UX
-- Notifications via Telegram, Discord, Gotify, Slack, Pushover, Email (SMTP), and [90+ notification services, click here for the full list](https://github.com/louislam/uptime-kuma/tree/master/src/components/notifications)
-- 20-second intervals
-- [Multi Languages](https://github.com/louislam/uptime-kuma/tree/master/src/lang)
-- Multiple status pages
-- Map status pages to specific domains
-- Ping chart
-- Certificate info
-- Proxy support
-- 2FA support
-
-## 🔧 How to Install
-
-### 🐳 Docker
-
-```bash
-docker run -d --restart=always -p 3001:3001 -v uptime-kuma:/app/data --name uptime-kuma louislam/uptime-kuma:1
+### 系統架構圖
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Client        │    │   Nginx         │    │   Uptime Kuma   │
+│   Request       │───▶│   OpenResty     │───▶│   Node 1        │
+└─────────────────┘    │   Load Balancer │    │   (Port 3001)   │
+                       └─────────────────┘    └─────────────────┘
+                                │
+                                ├─────────────────┐
+                                │                 │
+                                ▼                 ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   Health Check  │    │   Uptime Kuma   │
+                       │   & Failover    │    │   Node 2        │
+                       └─────────────────┘    │   (Port 3002)   │
+                                │             └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   Database      │    │   Uptime Kuma   │
+                       │   (MariaDB)     │    │   Node 3        │
+                       └─────────────────┘    │   (Port 3003)   │
+                                              └─────────────────┘
 ```
 
-Uptime Kuma is now running on <http://0.0.0.0:3001>.
-
-> [!WARNING]
-> File Systems like **NFS** (Network File System) are **NOT** supported. Please map to a local directory or volume.
-
-> [!NOTE]
-> If you want to limit exposure to localhost (without exposing port for other users or to use a [reverse proxy](https://github.com/louislam/uptime-kuma/wiki/Reverse-Proxy)), you can expose the port like this:
-> 
-> ```bash
-> docker run -d --restart=always -p 127.0.0.1:3001:3001 -v uptime-kuma:/app/data --name uptime-kuma louislam/uptime-kuma:1
-> ```
-
-### 💪🏻 Non-Docker
-
-Requirements:
-
-- Platform
-  - ✅ Major Linux distros such as Debian, Ubuntu, CentOS, Fedora and ArchLinux etc.
-  - ✅ Windows 10 (x64), Windows Server 2012 R2 (x64) or higher
-  - ❌ FreeBSD / OpenBSD / NetBSD
-  - ❌ Replit / Heroku
-- [Node.js](https://nodejs.org/en/download/) 18 / 20.4
-- [npm](https://docs.npmjs.com/cli/) 9
-- [Git](https://git-scm.com/downloads)
-- [pm2](https://pm2.keymetrics.io/) - For running Uptime Kuma in the background
-
-```bash
-git clone https://github.com/louislam/uptime-kuma.git
-cd uptime-kuma
-npm run setup
-
-# Option 1. Try it
-node server/server.js
-
-# (Recommended) Option 2. Run in the background using PM2
-# Install PM2 if you don't have it:
-npm install pm2 -g && pm2 install pm2-logrotate
-
-# Start Server
-pm2 start server/server.js --name uptime-kuma
+### 更詳細的負載平衡流程圖
+```
+┌─────────────────┐
+│   Client        │
+│   Request       │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Nginx OpenResty                          │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │   Load Balancer │    │   Health Check  │                │
+│  │   (Lua)         │    │   (Lua)         │                │
+│  └─────────┬───────┘    └─────────┬───────┘                │
+│            │                      │                        │
+│            ▼                      ▼                        │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │   Route to      │    │   Monitor       │                │
+│  │   Best Node     │    │   Node Status   │                │
+│  └─────────┬───────┘    └─────────┬───────┘                │
+└────────────┼──────────────────────┼────────────────────────┘
+             │                      │
+             │                      │
+             ▼                      ▼
+    ┌──────────────┐      ┌──────────────┐
+    │   Node 1     │      │   Database   │
+    │ Port 3001    │      │  (MariaDB)   │
+    └──────────────┘      └──────────────┘
+             │                      │
+             │                      │
+             ▼                      ▼
+    ┌──────────────┐      ┌──────────────┐
+    │   Node 2     │      │   Monitor    │
+    │ Port 3002    │      │   Records    │
+    └──────────────┘      └──────────────┘
+             │                      │
+             │                      │
+             ▼                      ▼
+    ┌──────────────┐      ┌──────────────┐
+    │   Node 3     │      │   Node       │
+    │ Port 3003    │      │   Status     │
+    └──────────────┘      └──────────────┘
 ```
 
-Uptime Kuma is now running on http://localhost:3001
-
-More useful PM2 Commands
-
-```bash
-# If you want to see the current console output
-pm2 monit
-
-# If you want to add it to startup
-pm2 save && pm2 startup
+### 網路拓撲圖
+```
+                    Internet
+                         │
+                         ▼
+                ┌─────────────────┐
+                │   Load Balancer │
+                │   (Nginx)       │
+                │   Port 80       │
+                └─────────┬───────┘
+                          │
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+        ▼                 ▼                 ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│   Node 1     │ │   Node 2     │ │   Node 3     │
+│ Port 3001    │ │ Port 3002    │ │ Port 3003    │
+│ 10.0.1.10    │ │ 10.0.1.11    │ │ 10.0.1.12    │
+└──────────────┘ └──────────────┘ └──────────────┘
+        │                 │                 │
+        │                 │                 │
+        ▼                 ▼                 ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│   Uptime     │ │   Uptime     │ │   Uptime     │
+│   Kuma       │ │   Kuma       │ │   Kuma       │
+│   Service    │ │   Service    │ │   Service    │
+└──────────────┘ └──────────────┘ └──────────────┘
+        │                 │                 │
+        └─────────────────┼─────────────────┘
+                          │
+                          ▼
+                ┌─────────────────┐
+                │   MariaDB       │
+                │   Database      │
+                │   10.0.1.20     │
+                └─────────────────┘
 ```
 
-### Advanced Installation
+### 核心組件
+1. **負載平衡器** (`load_balancer.lua`)
+2. **健康檢查器** (`health_check.lua`)
+3. **共享記憶體區域**
+4. **資料庫連接管理**
+5. **定時任務工作器**
 
-If you need more options or need to browse via a reverse proxy, please read:
+---
 
-https://github.com/louislam/uptime-kuma/wiki/%F0%9F%94%A7-How-to-Install
+## 🔧 模組說明
 
-## 🆙 How to Update
+### 1. 負載平衡器模組 (`load_balancer.lua`)
 
-Please read:
+負責智能負載分配和監控器重新平衡。
 
-https://github.com/louislam/uptime-kuma/wiki/%F0%9F%86%99-How-to-Update
+#### 主要功能
+- **負載平衡決策**：根據節點監控器數量選擇最佳節點
+- **負載資訊更新**：每30秒更新節點負載狀態
+- **監控器重新平衡**：手動觸發監控器重新分配
+- **節點選擇算法**：使用負載分數計算，監控器數量越少分數越高
 
-## 🆕 What's Next?
+#### 核心函數
+```lua
+balance_load()                    -- 執行負載平衡決策
+get_best_node()                   -- 獲取最佳節點
+update_load_info()                -- 更新負載資訊
+trigger_manual_rebalancing()      -- 手動觸發重新平衡
+get_rebalancing_statistics()      -- 獲取重新平衡統計
+```
 
-I will assign requests/issues to the next milestone.
+### 2. 健康檢查模組 (`health_check.lua`)
 
-https://github.com/louislam/uptime-kuma/milestones
+負責節點健康監控、故障檢測和故障轉移。
 
-## ❤️ Sponsors
+#### 主要功能
+- **節點心跳管理**：每60秒發送節點心跳
+- **主動健康檢查**：檢查節點響應性
+- **故障檢測**：每10秒掃描節點狀態
+- **故障轉移**：自動轉移故障節點的監控器
+- **節點恢復管理**：5分鐘恢復機制
 
-Thank you so much! (GitHub Sponsors will be updated manually. OpenCollective sponsors will be updated automatically, the list will be cached by GitHub though. It may need some time to be updated)
+#### 核心函數
+```lua
+send_heartbeat()                  -- 發送節點心跳
+perform_health_check()            -- 執行健康檢查
+scan_all_nodes()                  -- 掃描所有節點
+check_nodes_and_handle_failover() -- 檢查節點並處理故障轉移
+handle_node_failover()            -- 處理節點故障轉移
+```
 
-<img src="https://uptime.kuma.pet/sponsors?v=6" alt />
+---
 
-## 🖼 More Screenshots
+## ⚡ 功能特性
 
-Light Mode:
+### 1. 智能負載平衡
+- **負載分數計算**：`1 / (monitor_count + 1)`
+- **自動節點選擇**：選擇負載分數最高的節點
+- **實時負載更新**：每30秒更新負載資訊
 
-<img src="https://uptime.kuma.pet/img/light.jpg" width="512" alt="" />
+### 2. 健康檢查機制
+- **心跳間隔**：60秒
+- **健康檢查間隔**：60秒
+- **故障掃描間隔**：10秒
+- **失敗閾值**：3次失敗後標記為離線
 
-Status Page:
+### 3. 故障轉移策略
+- **自動故障檢測**：連續3次健康檢查失敗
+- **監控器轉移**：使用輪詢分配策略
+- **故障轉移間隔**：60秒檢查一次
 
-<img src="https://user-images.githubusercontent.com/1336778/134628766-a3fe0981-0926-4285-ab46-891a21c3e4cb.png" width="512" alt="" />
+### 4. 節點恢復管理
+- **恢復時間**：5分鐘（300秒）
+- **狀態流程**：`online` → `offline` → `recovering` → `online`
+- **自動恢復觸發**：恢復時間到達後自動標記為在線
 
-Settings Page:
+---
 
-<img src="https://louislam.net/uptimekuma/2.jpg" width="400" alt="" />
+## 🌐 API 接口
 
-Telegram Notification Sample:
+### 健康檢查端點
+```
+GET /health
+```
+返回系統健康狀態和時間戳。
 
-<img src="https://louislam.net/uptimekuma/3.jpg" width="400" alt="" />
+### 負載平衡相關 API
 
-## Motivation
+#### 1. 負載平衡狀態
+```
+GET /api/load-balancer-status
+```
+返回節點負載資訊、最後更新時間和更新次數。
 
-- I was looking for a self-hosted monitoring tool like "Uptime Robot", but it is hard to find a suitable one. One of the closest ones is statping. Unfortunately, it is not stable and no longer maintained.
-- Wanted to build a fancy UI.
-- Learn Vue 3 and vite.js.
-- Show the power of Bootstrap 5.
-- Try to use WebSocket with SPA instead of a REST API.
-- Deploy my first Docker image to Docker Hub.
+#### 2. 手動觸發負載更新
+```
+GET /api/update-loads
+```
+手動觸發負載資訊更新。
 
-If you love this project, please consider giving it a ⭐.
+### 健康檢查相關 API
 
-## 🗣️ Discussion / Ask for Help
+#### 1. 節點狀態概覽
+```
+GET /api/node-status
+```
+返回所有節點的詳細狀態資訊。
 
-⚠️ For any general or technical questions, please don't send me an email, as I am unable to provide support in that manner. I will not respond if you ask questions there.
+#### 2. 健康檢查統計
+```
+GET /api/health-check-status
+```
+返回心跳統計、故障轉移統計等資訊。
 
-I recommend using Google, GitHub Issues, or Uptime Kuma's subreddit for finding answers to your question. If you cannot find the information you need, feel free to ask:
+#### 3. 故障檢測狀態
+```
+GET /api/fault-detection-status
+```
+返回故障檢測掃描統計和配置資訊。
 
-- [GitHub Issues](https://github.com/louislam/uptime-kuma/issues)
-- [Subreddit (r/UptimeKuma)](https://www.reddit.com/r/UptimeKuma/)
+### 重新平衡相關 API
 
-My Reddit account: [u/louislamlam](https://reddit.com/u/louislamlam)
-You can mention me if you ask a question on the subreddit.
+#### 1. 手動觸發重新平衡
+```
+GET /api/trigger-rebalancing
+```
+手動觸發監控器重新平衡。
 
-## Contributions
+#### 2. 重新平衡狀態
+```
+GET /api/rebalancing-status
+```
+返回重新平衡統計資訊。
 
-### Create Pull Requests
+#### 3. 強制重新平衡
+```
+GET /api/force-rebalance-all
+```
+強制重新平衡所有監控器。
 
-We DO NOT accept all types of pull requests and do not want to waste your time. Please be sure that you have read and follow pull request rules:
-[CONTRIBUTING.md#can-i-create-a-pull-request-for-uptime-kuma](https://github.com/louislam/uptime-kuma/blob/master/CONTRIBUTING.md#can-i-create-a-pull-request-for-uptime-kuma)
+### 系統狀態 API
 
-### Test Pull Requests
+#### 系統狀態總覽
+```
+GET /api/system-status
+```
+返回所有模組的綜合狀態資訊。
 
-There are a lot of pull requests right now, but I don't have time to test them all.
+---
 
-If you want to help, you can check this:
-https://github.com/louislam/uptime-kuma/wiki/Test-Pull-Requests
+## ⚙️ 配置說明
 
-### Test Beta Version
+### 環境變數配置
+```bash
+# 資料庫配置
+DB_HOST=mariadb
+DB_PORT=3306
+DB_USER=kuma
+DB_PASSWORD=kuma_pass
+DB_NAME=kuma
 
-Check out the latest beta release here: https://github.com/louislam/uptime-kuma/releases
+# 節點配置
+UPTIME_KUMA_NODE_ID=nginx-node
+UPTIME_KUMA_NODE_IP=127.0.0.1
+```
 
-### Bug Reports / Feature Requests
+### 共享記憶體配置
+```nginx
+# 共享記憶體區域
+lua_shared_dict load_balancer 10m;    # 負載平衡器
+lua_shared_dict fault_detector 5m;    # 故障檢測器
+lua_shared_dict health_checker 5m;    # 健康檢查器
+```
 
-If you want to report a bug or request a new feature, feel free to open a [new issue](https://github.com/louislam/uptime-kuma/issues).
+### 定時任務配置
+```nginx
+# 工作器間隔配置
+update_worker:     30秒  # 負載資訊更新
+fault_worker:      10秒  # 故障檢測掃描
+health_worker:     60秒  # 心跳發送
+failover_worker:   60秒  # 故障轉移檢查
+```
 
-### Translations
+### Nginx Upstream 配置
+```nginx
+upstream uptime_kuma_backend {
+    zone uptime_kuma_backend 64k;
+    ip_hash;
+    
+    # 動態節點配置
+    server uptime-kuma-node1:3001 max_fails=3 fail_timeout=30s;
+    server uptime-kuma-node2:3002 max_fails=3 fail_timeout=30s;
+    server uptime-kuma-node3:3003 max_fails=3 fail_timeout=30s;
+    
+    keepalive 32;
+}
+```
 
-If you want to translate Uptime Kuma into your language, please visit [Weblate Readme](https://github.com/louislam/uptime-kuma/blob/master/src/lang/README.md).
+---
 
-### Spelling & Grammar
+## 🚀 部署指南
 
-Feel free to correct the grammar in the documentation or code.
-My mother language is not English and my grammar is not that great.
+### 1. 前置需求
+- Nginx OpenResty 1.19+
+- MariaDB/MySQL 資料庫
+- Uptime Kuma 多節點部署
+
+### 2. 檔案部署
+```bash
+# 複製 Lua 模組
+cp lua/load_balancer.lua /usr/local/openresty/lualib/
+cp lua/health_check.lua /usr/local/openresty/lualib/
+
+# 複製 Nginx 配置
+cp nginx/nginx.conf /usr/local/openresty/nginx/conf/
+```
+
+### 3. 資料庫準備
+確保資料庫中存在以下表結構：
+- `node` 表：節點資訊
+- `monitor` 表：監控器資訊
+
+### 4. 服務啟動
+```bash
+# 測試配置
+nginx -t
+
+# 重新載入配置
+nginx -s reload
+
+# 檢查服務狀態
+curl http://localhost/health
+```
+
+---
+
+## 📊 監控與維護
+
+### 1. 日誌監控
+- **錯誤日誌**：`/usr/local/openresty/nginx/logs/error.log`
+- **訪問日誌**：`/usr/local/openresty/nginx/logs/access.log`
+- **WebSocket 日誌**：`/usr/local/openresty/nginx/logs/websocket.log`
+
+### 2. 性能指標
+- **負載平衡效率**：通過 `/api/load-balancer-status` 監控
+- **健康檢查狀態**：通過 `/api/health-check-status` 監控
+- **故障轉移統計**：通過 `/api/fault-detection-status` 監控
+
+### 3. 故障排查
+- **資料庫連接問題**：檢查環境變數和資料庫狀態
+- **節點健康檢查失敗**：檢查節點服務狀態和網路連接
+- **負載平衡異常**：檢查節點狀態和監控器分配
+
+### 4. 定期維護
+- **日誌清理**：定期清理舊日誌檔案
+- **資料庫優化**：定期優化資料庫查詢性能
+- **配置更新**：根據實際需求調整定時任務間隔
+
+---
+
+## 🔒 安全考量
+
+### 1. 訪問控制
+- API 端點建議添加認證機制
+- 限制敏感 API 的訪問來源
+
+### 2. 資料安全
+- 資料庫連接使用環境變數
+- 避免在配置檔案中硬編碼敏感資訊
+
+### 3. 網路安全
+- 使用 HTTPS 加密傳輸
+- 配置適當的防火牆規則
+
+---
+
+## 🚀 擴展與優化
+
+### 1. 性能優化
+- 調整共享記憶體大小
+- 優化資料庫查詢
+- 調整定時任務間隔
+
+### 2. 功能擴展
+- 添加更多負載平衡算法
+- 實現動態節點發現
+- 添加監控器優先級支援
+
+### 3. 監控增強
+- 集成 Prometheus 指標
+- 添加告警機制
+- 實現自動化測試
+
+---
+
+## 📝 負載平衡決策流程
+
+```
+┌─────────────────┐
+│   Request       │
+│   Arrives       │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Load Balancer │
+│   Decision      │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Check Node    │
+│   Loads         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Calculate     │
+│   Load Score    │
+│   1/(count+1)   │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Select Best   │
+│   Node          │
+└─────────┬───────┘
+          │
+          ▼
+    ┌─────────┐
+    │ Node 1  │
+    │ 3001    │
+    └─────────┘
+    ┌─────────┐
+    │ Node 2  │
+    │ 3002    │
+    └─────────┘
+    ┌─────────┐
+    │ Node 3  │
+    │ 3003    │
+    └─────────┘
+```
+
+---
+
+## 🎯 總結
+
+這個 Nginx OpenResty 負載平衡與健康檢查系統提供了一個完整的解決方案，用於管理 Uptime Kuma 多節點部署。系統具備智能負載平衡、自動故障檢測、故障轉移和監控器重新平衡等核心功能，確保服務的高可用性和穩定性。
+
+通過合理的配置和監控，系統能夠自動處理節點故障，優化負載分佈，並提供豐富的 API 接口供管理和監控使用。
+
+### 系統優勢
+- **高可用性**：自動故障檢測和轉移
+- **智能負載**：基於監控器數量的動態分配
+- **易於維護**：豐富的 API 接口和監控功能
+- **可擴展性**：支援動態節點添加和移除
+- **穩定性**：5分鐘節點恢復機制
+
+---
+
+## 📞 技術支援
+
+如有技術問題或需要進一步的協助，請參考：
+- 系統日誌檔案
+- API 狀態查詢
+- 資料庫連接檢查
+- 網路連接測試
+
+---
+
+*最後更新：2024年12月*
+*版本：1.0.0*
 
 

@@ -35,7 +35,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { nodeId, nodeName, ip, isPrimary, version } = nodeData;
+            const { nodeId, nodeName, ip, isPrimary } = nodeData;
 
             // Validate required fields
             if (!nodeId || !nodeName) {
@@ -49,9 +49,9 @@ module.exports.nodeSocketHandler = (socket) => {
             }
 
             // Create new node
-            const node = await Node.createOrUpdate(nodeId, nodeName, ip, isPrimary, version);
+            const node = await Node.createOrUpdate(nodeId, nodeName, ip, isPrimary);
 
-            log.info("node", `Added node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} version: ${version || 'N/A'} by user ${socket.userID}`);
+            log.info("node", `Added node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
             // Send updated list to all clients
             await sendNodeList(socket);
@@ -76,7 +76,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { id, nodeId, nodeName, ip, isPrimary, version } = nodeData;
+            const { id, nodeId, nodeName, ip, isPrimary } = nodeData;
 
             // Validate required fields
             if (!id || !nodeId || !nodeName) {
@@ -101,7 +101,6 @@ module.exports.nodeSocketHandler = (socket) => {
             node.node_id = nodeId;
             node.node_name = nodeName;
             node.ip = ip;
-            node.version = version;
             node.modified_date = R.isoDateTime();
 
             // Handle primary node setting
@@ -123,7 +122,7 @@ module.exports.nodeSocketHandler = (socket) => {
 
             await R.store(node);
 
-            log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} version: ${version || 'N/A'} by user ${socket.userID}`);
+            log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
             // Send updated list to all clients
             await sendNodeList(socket);
@@ -153,10 +152,10 @@ module.exports.nodeSocketHandler = (socket) => {
                 throw new Error("Node not found");
             }
 
-            // Check if any monitors are assigned to this node
-            const assignedMonitors = await R.find("monitor", "assigned_node = ?", [node.node_id]);
+            // Check if any monitors are assigned to this node (either assigned_node or default node_id)
+            const assignedMonitors = await R.find("monitor", "assigned_node = ? OR node_id = ?", [node.node_id, node.node_id]);
             if (assignedMonitors.length > 0) {
-                throw new Error(`Cannot delete node. ${assignedMonitors.length} monitor(s) are assigned to this node.`);
+                throw new Error(`Cannot delete node. ${assignedMonitors.length} monitor(s) are assigned or default to this node.`);
             }
 
             await Node.deleteById(nodeId);
@@ -185,19 +184,27 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { getNodeManager } = require("../node-manager");
-            const nodeManager = getNodeManager();
-            const success = await nodeManager.triggerManualRebalancing();
-
-            if (success) {
-                log.info("node", `Manual monitor rebalancing triggered by user ${socket.userID}`);
-                
-                callback({
-                    ok: true,
-                    msg: "Monitor rebalancing completed successfully",
-                });
-            } else {
-                throw new Error("Failed to trigger monitor rebalancing");
+            // NodeManager has been migrated to OpenResty/nginx
+            // Manual rebalancing is now handled by nginx with Lua scripts
+            // You can trigger rebalancing by calling: POST /api/trigger-rebalancing
+            
+            // Call nginx API for rebalancing
+            const axios = require('axios');
+            try {
+                const response = await axios.post('http://localhost/api/trigger-rebalancing');
+                if (response.status === 200) {
+                    log.info("node", `Manual monitor rebalancing triggered by user ${socket.userID} via nginx`);
+                    
+                    callback({
+                        ok: true,
+                        msg: "Monitor rebalancing completed successfully via nginx",
+                    });
+                } else {
+                    throw new Error("Nginx rebalancing API returned non-200 status");
+                }
+            } catch (apiError) {
+                log.error("node", `Failed to call nginx rebalancing API: ${apiError.message}`);
+                throw new Error("Failed to trigger monitor rebalancing via nginx");
             }
 
         } catch (e) {
