@@ -1,24 +1,5 @@
 version: '3.8'
 
-# 節點通用配置
-x-node-base: &node-base
-  build:
-    context: .
-    dockerfile: docker/dockerfile
-    target: release
-  restart: unless-stopped
-  networks:
-    - kuma-network
-  depends_on:
-    mariadb:
-      condition: service_healthy
-  healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 40s
-
 volumes:
   kuma-db:
     name: kuma-db
@@ -63,20 +44,23 @@ services:
     ports:
       - "9091:3001"
     environment:
+      - UM_ALLOW_IFRAME=true
+      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
       - UPTIME_KUMA_DB_TYPE=mariadb
       - UPTIME_KUMA_DB_HOSTNAME=mariadb
       - UPTIME_KUMA_DB_PORT=3306
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_FORCE_MIGRATE=true
       - UPTIME_KUMA_NODE_ID=node1
-      - UPTIME_KUMA_NODE_NAME=node1 
-      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
+      - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
       mariadb:
         condition: service_healthy
     restart: unless-stopped
-
     networks:
       - kuma-network
+
+networks:
+  kuma-network:
+    external: true
