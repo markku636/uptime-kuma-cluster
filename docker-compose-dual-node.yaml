@@ -21,7 +21,7 @@ services:
     volumes:
       - kuma-db:/var/lib/mysql
     ports:
-      - "33066:3306"
+      - "9090:3306"
     restart: unless-stopped
     networks:
       - kuma-network
@@ -42,7 +42,7 @@ services:
     volumes:
       - ./data/node1:/app/data
     ports:
-      - "3001:3001"
+      - "9091:3001"
     environment:
       - UM_ALLOW_IFRAME=true
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
@@ -52,8 +52,7 @@ services:
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_NODE_ID=node1
-      - UPTIME_KUMA_FORCE_MIGRATE=true
+      - UPTIME_KUMA_NODE_ID=node1      
     depends_on:
       mariadb:
         condition: service_healthy
@@ -61,36 +60,6 @@ services:
 
     networks:
       - kuma-network
-
-  uptime-kuma-node2:
-    image: ${IMAGE}
-#    build:
-#      context: .
-#      dockerfile: docker/dockerfile
-#      target: release
-    container_name: uptime-kuma-node2
-#    volumes:
-#      - ./data/node2:/app/data
-    ports:
-      - "3002:3001"
-    environment:
-      - UM_ALLOW_IFRAME=true
-      - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
-      - UPTIME_KUMA_DB_TYPE=mariadb
-      - UPTIME_KUMA_DB_HOSTNAME=mariadb
-      - UPTIME_KUMA_DB_PORT=3306
-      - UPTIME_KUMA_DB_NAME=kuma
-      - UPTIME_KUMA_DB_USERNAME=kuma
-      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_NODE_ID=node2
-      - UPTIME_KUMA_FORCE_MIGRATE=true
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - kuma-network
-
 networks:
   kuma-network:
     external: true
