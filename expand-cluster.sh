@@ -100,8 +100,7 @@ for i in $(seq 1 $TOTAL_NODES); do
       - ./data/node$i:/app/data
     expose:
       - "3001"
-    environment:
-      - UM_ALLOW_IFRAME=true
+    environment:      
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
       - UPTIME_KUMA_DB_TYPE=mariadb
       - UPTIME_KUMA_DB_HOSTNAME=mariadb

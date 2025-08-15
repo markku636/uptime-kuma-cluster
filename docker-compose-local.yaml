@@ -1,9 +1,14 @@
 version: '3.8'
 
+volumes:
+  kuma-db:
+    name: kuma-db
+    driver: local
+
 services:
   mariadb:
     image: mariadb:10
-    container_name: uptime-kuma-mariadb
+    container_name: mariadb
     environment:
       MYSQL_ROOT_PASSWORD: kuma_root_pass
       MYSQL_DATABASE: kuma
@@ -14,8 +19,12 @@ services:
     ports:
       - "3306:3306"
     restart: unless-stopped
-    networks:
-      - kuma-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u kuma -p kuma_pass --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   uptime-kuma:
     build:
@@ -28,7 +37,6 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - UM_ALLOW_IFRAME=true
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
       - UPTIME_KUMA_DB_TYPE=mariadb
       - UPTIME_KUMA_DB_HOSTNAME=mariadb
@@ -36,20 +44,9 @@ services:
       - UPTIME_KUMA_DB_NAME=kuma
       - UPTIME_KUMA_DB_USERNAME=kuma
       - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      # 啟用負載均衡功能時取消註釋下面這行
       - UPTIME_KUMA_NODE_ID=node1
-      # 節點配置參數
-      - UPTIME_KUMA_NODE_HOST=127.0.0.1:3001
-      - UPTIME_KUMA_NODE_NAME=node1
+      - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
     restart: unless-stopped
-    networks:
-      - kuma-network
-
-volumes:
-  kuma-db:
-
-networks:
-  kuma-network:
-    driver: bridge 
