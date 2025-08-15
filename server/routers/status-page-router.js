@@ -52,7 +52,24 @@ router.get("/api/status-page/:slug", cache("5 minutes"), async (request, respons
             return null;
         }
 
-        let statusPageData = await StatusPage.getStatusPageData(statusPage);
+        // Extract pagination and filtering parameters
+        const groupFilter = request.query.group || null;
+        const page = parseInt(request.query.page) || 1;
+        const limit = Math.min(parseInt(request.query.limit) || 10, 50); // Max 50 items per page
+
+        // Get status page data with pagination
+        let statusPageData;
+        if (groupFilter || page > 1 || limit !== 10) {
+            // Use paginated version if any pagination parameters are provided
+            statusPageData = await StatusPage.getStatusPageDataPaginated(statusPage, {
+                groupFilter,
+                page,
+                limit
+            });
+        } else {
+            // Use original method for backward compatibility
+            statusPageData = await StatusPage.getStatusPageData(statusPage);
+        }
 
         // Response
         response.json(statusPageData);

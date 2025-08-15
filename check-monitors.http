@@ -1,0 +1,53 @@
+# 檢查現有監控器的腳本
+
+@baseUrl = http://127.0.0.1:9091
+@apiKey = uk1_dRoog_hjdvwvtQTCwXeaXj2jbrjA0OVOsLIkSwJn
+
+### 1. 查看所有監控器
+GET {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+
+### 2. 查看 API 狀態
+GET {{baseUrl}}/api/v1/status
+
+### 3. 創建一些測試監控器（如果需要更多監控器的話）
+
+### 創建監控器 1
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試監控器_1",
+  "type": "http",
+  "url": "https://httpbin.org/status/200",
+  "interval": 60,
+  "active": true,
+  "method": "GET"
+}
+
+### 創建監控器 2
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試監控器_2",
+  "type": "ping",
+  "hostname": "8.8.8.8",
+  "interval": 60,
+  "active": true
+}
+
+### 創建監控器 3
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "測試監控器_3",
+  "type": "dns",
+  "hostname": "google.com",
+  "interval": 60,
+  "active": true
+}

@@ -1,15 +1,16 @@
 <template>
     <!-- Group List -->
     <Draggable
-        v-model="$root.publicGroupList"
-        :disabled="!editMode"
+        :list="filteredGroupList"
+        :disabled="!editMode || activeTab !== 'all'"
         item-key="id"
         :animation="100"
+        @change="handleDragChange"
     >
         <template #item="group">
             <div class="mb-5" data-testid="group">
                 <!-- Group Title -->
-                <h2 class="group-title">
+                <h2 v-if="shouldShowGroupTitle()" class="group-title">
                     <font-awesome-icon v-if="editMode && showGroupDrag" icon="arrows-alt-v" class="action drag me-3" />
                     <font-awesome-icon v-if="editMode" icon="times" class="action remove me-3" @click="removeGroup(group.index)" />
                     <Editable v-model="group.element.name" :contenteditable="editMode" tag="span" data-testid="group-name" />
@@ -114,6 +115,21 @@ export default {
         /** Should expiry be shown? */
         showCertificateExpiry: {
             type: Boolean,
+        },
+        /** Active tab for filtering groups */
+        activeTab: {
+            type: [String, Number],
+            default: 'all'
+        },
+        /** Current page for pagination */
+        page: {
+            type: Number,
+            default: 1
+        },
+        /** Items per page */
+        perPage: {
+            type: Number,
+            default: 10
         }
     },
     data() {
@@ -124,12 +140,78 @@ export default {
     computed: {
         showGroupDrag() {
             return (this.$root.publicGroupList.length >= 2);
+        },
+        
+        /**
+         * Filter groups based on active tab
+         * @returns {Array} Filtered group list
+         */
+        filteredGroupList() {
+            if (!this.$root.publicGroupList) {
+                return [];
+            }
+            
+            // In edit mode, show all groups
+            if (this.editMode) {
+                return this.$root.publicGroupList;
+            }
+            
+            // If activeTab is 'all', show all groups
+            if (this.activeTab === 'all') {
+                return this.$root.publicGroupList;
+            }
+            
+            // Filter to show only the selected group
+            const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+            if (selectedGroup) {
+                console.log(`Filtering to show group: ${selectedGroup.name} (ID: ${selectedGroup.id})`);
+                return [selectedGroup];
+            }
+            
+            console.log(`No group found for activeTab: ${this.activeTab}`);
+            // If no matching group found, return empty array
+            return [];
+        },
+        
+        /**
+         * Check if we should show group title
+         * @returns {boolean} Should show group title
+         */
+        shouldShowGroupTitle() {
+            // Always show in edit mode
+            if (this.editMode) {
+                return true;
+            }
+            
+            // Show when displaying all groups
+            if (this.activeTab === 'all') {
+                return true;
+            }
+            
+            // Hide when showing single group (since the tab already indicates which group)
+            return false;
         }
     },
     created() {
 
     },
     methods: {
+        /**
+         * Handle drag and drop changes
+         * @param {object} event Drag event
+         * @returns {void}
+         */
+        handleDragChange(event) {
+            // Only allow drag changes when showing all groups
+            if (this.activeTab === 'all' && this.editMode) {
+                if (event.moved) {
+                    // Update the original publicGroupList
+                    const item = this.$root.publicGroupList.splice(event.moved.oldIndex, 1)[0];
+                    this.$root.publicGroupList.splice(event.moved.newIndex, 0, item);
+                }
+            }
+        },
+
         /**
          * Remove the specified group
          * @param {number} index Index of group to remove

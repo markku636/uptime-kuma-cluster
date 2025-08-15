@@ -3,8 +3,8 @@
 ### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
 
 # 基礎 URL 配置
-@baseUrl = http://192.168.99.88:9091
-@apiKey = uk1_fcy2lMrDQrjmhmk05dzgZxVE3qH_rrbF5LBukF1O
+@baseUrl = http://127.0.0.1:3001
+@apiKey = uk1_dRoog_hjdvwvtQTCwXeaXj2jbrjA0OVOsLIkSwJn
 
 ### 1. 測試 API 狀態
 GET {{baseUrl}}/api/v1/status
@@ -134,6 +134,9 @@ Content-Type: application/json
   "show_certificate_expiry": false
 }
 
+
+
+
 ### 18. 創建生產環境狀態頁面
 POST {{baseUrl}}/api/v1/status-pages
 Authorization: {{apiKey}}
@@ -229,5 +232,3053 @@ Content-Type: application/json
   "title": "重複的 Slug 測試",
   "slug": "production-services",
   "description": "這個 slug 已經存在，應該被拒絕"
+}
+
+### ========================================
+### 新實作的 REST API 測試
+### ========================================
+
+### 27. 創建 HTTP 監控器 (POST)
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "新的HTTP監控器",
+  "type": "http",
+  "url": "https://httpbin.org/status/200",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "node_id": "node1",
+  "description": "通過 REST API 創建的 HTTP 監控器"
+}
+
+### 28. 創建 Ping 監控器 (POST)
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "新的Ping監控器",
+  "type": "ping",
+  "hostname": "8.8.8.8",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "description": "通過 REST API 創建的 Ping 監控器"
+}
+
+### 29. 創建 DNS 監控器 (POST)
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "新的DNS監控器",
+  "type": "dns",
+  "hostname": "google.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "description": "通過 REST API 創建的 DNS 監控器"
+}
+
+### 30. 更新監控器 (PUT) - 假設 ID 為 1
+PUT {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "更新後的監控器名稱",
+  "description": "更新後的描述",
+  "interval": 120,
+  "active": false
+}
+
+### 31. 創建新的狀態頁面 (POST)
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "REST API 測試狀態頁面",
+  "slug": "rest-api-test-page",
+  "description": "通過 REST API 創建的測試狀態頁面",
+  "theme": "dark",
+  "autoRefreshInterval": 180,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true
+}
+
+### 32. 創建帶群組的狀態頁面 (POST)
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "完整測試狀態頁面",
+  "slug": "full-test-page",
+  "description": "包含群組的完整測試狀態頁面",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "published": true,
+  "publicGroupList": [
+    {
+      "name": "測試群組 1",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        }
+      ]
+    }
+  ]
+}
+
+### 33. 創建群組 (POST) - 假設狀態頁面 ID 為 1
+POST {{baseUrl}}/api/v1/groups
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "REST API 測試群組",
+  "status_page_id": 1,
+  "public": true,
+  "weight": 1,
+  "monitorList": [
+    {
+      "id": 1,
+      "sendUrl": true,
+      "weight": 1
+    },
+    {
+      "id": 2,
+      "sendUrl": false,
+      "url": "https://custom-url.example.com",
+      "weight": 2
+    }
+  ]
+}
+
+### 34. 更新群組 (PUT) - 假設群組 ID 為 1
+PUT {{baseUrl}}/api/v1/groups/1
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "更新後的群組名稱",
+  "public": true,
+  "weight": 2,
+  "monitorList": [
+    {
+      "id": 1,
+      "sendUrl": true,
+      "weight": 1
+    }
+  ]
+}
+
+### 35. 查詢特定群組 (GET) - 假設群組 ID 為 1
+GET {{baseUrl}}/api/v1/groups/1
+Authorization: {{apiKey}}
+
+### 36. 批量創建監控器測試
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "批量測試監控器-1",
+  "type": "http",
+  "url": "https://jsonplaceholder.typicode.com/posts/1",
+  "method": "GET",
+  "interval": 120,
+  "active": true,
+  "headers": "{\"User-Agent\": \"Kuma-Test\"}",
+  "description": "批量測試用的監控器"
+}
+
+### 37. 創建帶驗證的監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "帶驗證的監控器",
+  "type": "http",
+  "url": "https://httpbin.org/basic-auth/user/pass",
+  "method": "GET",
+  "interval": 60,
+  "active": true,
+  "basic_auth_user": "user",
+  "basic_auth_pass": "pass",
+  "description": "測試基本驗證功能"
+}
+
+### 38. 創建 Keyword 監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "關鍵字監控器",
+  "type": "keyword",
+  "url": "https://httpbin.org/json",
+  "method": "GET",
+  "keyword": "slideshow",
+  "invertKeyword": false,
+  "interval": 60,
+  "active": true,
+  "description": "測試關鍵字檢測功能"
+}
+
+### 39. 測試錯誤處理 - 創建無效監控器 (應該失敗)
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "",
+  "type": "invalid_type"
+}
+
+### 40. 測試錯誤處理 - 更新不存在的監控器 (應該失敗)
+PUT {{baseUrl}}/api/v1/monitors/99999
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "不存在的監控器"
+}
+
+### ========================================
+### PUT API 測試
+### ========================================
+
+### 41. 更新狀態頁面 (PUT) - 基本欄位更新
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "更新後的狀態頁面標題",
+  "description": "更新後的狀態頁面描述",
+  "theme": "dark",
+  "autoRefreshInterval": 180,
+  "published": false,
+  "search_engine_index": false,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true
+}
+
+### 42. 更新狀態頁面的 publicGroupList (PUT)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "更新群組的狀態頁面",
+  "publicGroupList": [
+    {
+      "name": "更新後的群組 1",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        },
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://updated-custom-url.example.com"
+        },
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://prod-env.example.com"
+        },
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://staging-env.example.com"
+        },
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://dev-env.example.com"
+        },
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://test-env.example.com"
+        }
+      ]
+    },
+    {
+      "name": "新增的群組 2",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://api-1.example.com"
+        },
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://api-2.example.com"
+        }
+      ]
+    },
+    {
+      "name": "測試環境群組",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        },
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://test-mirror.example.com"
+        }
+      ]
+    }
+  ]
+}
+
+### 43. 完全重組 publicGroupList (PUT)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "publicGroupList": [
+    {
+      "name": "重組後的唯一群組",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        }
+      ]
+    }
+  ]
+}
+
+### 44. 清空 publicGroupList (PUT)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "清空群組的狀態頁面",
+  "publicGroupList": []
+}
+
+### 45. 僅更新部分欄位，不動 publicGroupList (PUT)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "僅更新標題",
+  "description": "僅更新描述，不影響現有群組"
+}
+
+### 46. 更新帶有新監控器的 publicGroupList (PUT)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "publicGroupList": [
+    {
+      "name": "生產環境服務",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        },
+        {
+          "id": 2,
+          "sendUrl": true
+        },
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://prod-backup.example.com"
+        }
+      ]
+    },
+    {
+      "name": "開發環境服務",
+      "monitorList": [
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://dev.example.com"
+        },
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://dev-api.example.com"
+        }
+      ]
+    },
+    {
+      "name": "測試環境服務",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://test.example.com"
+        },
+        {
+          "id": 2,
+          "sendUrl": false,
+          "url": "https://staging.example.com"
+        }
+      ]
+    }
+  ]
+}
+
+### 47. 測試錯誤處理 - 更新不存在的狀態頁面 (應該失敗)
+PUT {{baseUrl}}/api/v1/status-pages/non-existent-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "不存在的頁面"
+}
+
+### 48. 驗證更新後的狀態頁面
+GET {{baseUrl}}/api/v1/status-pages/full-test-page?includeGroups=true
+Authorization: {{apiKey}}
+
+### 49. 測試更新後的公開狀態頁面
+GET {{baseUrl}}/api/status-page/full-test-page
+
+### ========================================
+### 分頁測試：大量監控器創建
+### ========================================
+
+### 50. 創建HTTP監控器 - 網站服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "主網站",
+  "type": "http",
+  "url": "https://www.example.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "主要網站服務監控"
+}
+
+### 51. 創建HTTP監控器 - API服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "API服務",
+  "type": "http",
+  "url": "https://api.example.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 5,
+  "method": "GET",
+  "description": "API服務健康檢查"
+}
+
+### 52. 創建HTTP監控器 - 管理後台
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "管理後台",
+  "type": "http",
+  "url": "https://admin.example.com",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "管理後台監控"
+}
+
+### 53. 創建HTTP監控器 - 用戶門戶
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "用戶門戶",
+  "type": "http",
+  "url": "https://portal.example.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "用戶門戶服務監控"
+}
+
+### 54. 創建HTTP監控器 - 支付服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "支付服務",
+  "type": "http",
+  "url": "https://payment.example.com/status",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 8,
+  "method": "GET",
+  "description": "支付服務狀態監控"
+}
+
+### 55. 創建HTTP監控器 - 郵件服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "郵件服務",
+  "type": "http",
+  "url": "https://mail.example.com/api/health",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 12,
+  "method": "GET",
+  "description": "郵件服務監控"
+}
+
+### 56. 創建HTTP監控器 - 文件存儲
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "文件存儲服務",
+  "type": "http",
+  "url": "https://files.example.com/health",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 20,
+  "method": "GET",
+  "description": "文件存儲服務監控"
+}
+
+### 57. 創建HTTP監控器 - 搜索服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "搜索服務",
+  "type": "http",
+  "url": "https://search.example.com/api/status",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "搜索服務監控"
+}
+
+### 58. 創建HTTP監控器 - 推送服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "推送服務",
+  "type": "http",
+  "url": "https://push.example.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "推送通知服務監控"
+}
+
+### 59. 創建HTTP監控器 - 分析服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "分析服務",
+  "type": "http",
+  "url": "https://analytics.example.com/api/ping",
+  "interval": 240,
+  "active": true,
+  "retryInterval": 120,
+  "timeout": 25,
+  "method": "GET",
+  "description": "數據分析服務監控"
+}
+
+### 60. 創建Ping監控器 - 數據庫服務器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "數據庫服務器",
+  "type": "ping",
+  "hostname": "db.example.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 5,
+  "description": "主數據庫服務器連通性監控"
+}
+
+### 61. 創建Ping監控器 - 緩存服務器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "緩存服務器",
+  "type": "ping",
+  "hostname": "cache.example.com",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 3,
+  "description": "Redis緩存服務器監控"
+}
+
+### 62. 創建Ping監控器 - 負載均衡器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "負載均衡器",
+  "type": "ping",
+  "hostname": "lb.example.com",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 5,
+  "description": "負載均衡器連通性監控"
+}
+
+### 63. 創建DNS監控器 - 主域名
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "主域名DNS",
+  "type": "dns",
+  "hostname": "example.com",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "dns_resolve_type": "A",
+  "description": "主域名DNS解析監控"
+}
+
+### 64. 創建DNS監控器 - API域名
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "API域名DNS",
+  "type": "dns",
+  "hostname": "api.example.com",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "dns_resolve_type": "A",
+  "description": "API域名DNS解析監控"
+}
+
+### 65. 創建HTTP監控器 - CDN服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "CDN服務",
+  "type": "http",
+  "url": "https://cdn.example.com/test.jpg",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 30,
+  "method": "HEAD",
+  "description": "CDN內容分發網絡監控"
+}
+
+### 66. 創建HTTP監控器 - 備份API
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "備份API服務",
+  "type": "http",
+  "url": "https://backup-api.example.com/health",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "method": "GET",
+  "description": "備份API服務監控"
+}
+
+### 67. 創建HTTP監控器 - 監控儀表板
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "監控儀表板",
+  "type": "http",
+  "url": "https://dashboard.example.com",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 10,
+  "method": "GET",
+  "description": "監控儀表板服務"
+}
+
+### 68. 創建HTTP監控器 - 報告系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "報告系統",
+  "type": "http",
+  "url": "https://reports.example.com/api/status",
+  "interval": 600,
+  "active": true,
+  "retryInterval": 300,
+  "timeout": 20,
+  "method": "GET",
+  "description": "報告生成系統監控"
+}
+
+### 69. 創建HTTP監控器 - 第三方整合API
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "第三方整合API",
+  "type": "http",
+  "url": "https://integration.example.com/webhook/test",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 25,
+  "method": "POST",
+  "body": "{\"test\": true}",
+  "headers": "{\"Content-Type\": \"application/json\"}",
+  "description": "第三方系統整合API監控"
+}
+
+### 70. 創建HTTP監控器 - 移動端API
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "移動端API",
+  "type": "http",
+  "url": "https://mobile-api.example.com/v1/status",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 8,
+  "method": "GET",
+  "description": "移動應用API服務監控"
+}
+
+### 71. 創建HTTP監控器 - 內容管理系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "內容管理系統",
+  "type": "http",
+  "url": "https://cms.example.com/api/health",
+  "interval": 240,
+  "active": true,
+  "retryInterval": 120,
+  "timeout": 15,
+  "method": "GET",
+  "description": "CMS內容管理系統監控"
+}
+
+### 72. 創建HTTP監控器 - 客服系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "客服系統",
+  "type": "http",
+  "url": "https://support.example.com/api/ping",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 12,
+  "method": "GET",
+  "description": "客戶服務系統監控"
+}
+
+### 73. 創建HTTP監控器 - 論壇系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "論壇系統",
+  "type": "http",
+  "url": "https://forum.example.com",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 20,
+  "method": "GET",
+  "description": "用戶論壇系統監控"
+}
+
+### 74. 創建HTTP監控器 - 知識庫
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "知識庫系統",
+  "type": "http",
+  "url": "https://kb.example.com/api/status",
+  "interval": 600,
+  "active": true,
+  "retryInterval": 300,
+  "timeout": 25,
+  "method": "GET",
+  "description": "知識庫系統監控"
+}
+
+### 75. 創建HTTP監控器 - 計費系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "計費系統",
+  "type": "http",
+  "url": "https://billing.example.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 10,
+  "method": "GET",
+  "description": "計費系統監控"
+}
+
+### ========================================
+### 分頁測試：大量狀態頁面和群組創建
+### ========================================
+
+### 76. 創建分頁測試狀態頁面 - 生產環境儀表板
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "生產環境服務儀表板",
+  "slug": "production-dashboard",
+  "description": "生產環境所有服務的監控狀態頁面",
+  "theme": "dark",
+  "autoRefreshInterval": 60,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "核心Web服務",
+      "monitorList": [
+        {"id": 3, "sendUrl": true},
+        {"id": 4, "sendUrl": true},
+        {"id": 5, "sendUrl": true},
+        {"id": 6, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "API服務群組",
+      "monitorList": [
+        {"id": 7, "sendUrl": true},
+        {"id": 8, "sendUrl": true},
+        {"id": 9, "sendUrl": false, "url": "https://api-v2.example.com"},
+        {"id": 10, "sendUrl": false, "url": "https://api-v3.example.com"}
+      ]
+    },
+    {
+      "name": "數據庫和緩存",
+      "monitorList": [
+        {"id": 11, "sendUrl": true},
+        {"id": 12, "sendUrl": true},
+        {"id": 13, "sendUrl": false, "url": "https://db-replica.example.com"}
+      ]
+    },
+    {
+      "name": "基礎設施服務",
+      "monitorList": [
+        {"id": 14, "sendUrl": true},
+        {"id": 15, "sendUrl": true},
+        {"id": 16, "sendUrl": true},
+        {"id": 17, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "第三方整合",
+      "monitorList": [
+        {"id": 18, "sendUrl": true},
+        {"id": 19, "sendUrl": false, "url": "https://partner-api.example.com"},
+        {"id": 20, "sendUrl": false, "url": "https://external-service.example.com"}
+      ]
+    }
+  ]
+}
+
+### 77. 創建分頁測試狀態頁面 - 開發環境儀表板
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "開發環境服務儀表板",
+  "slug": "development-dashboard",
+  "description": "開發環境所有服務的監控狀態頁面",
+  "theme": "light",
+  "autoRefreshInterval": 120,
+  "published": true,
+  "search_engine_index": false,
+  "show_tags": false,
+  "show_powered_by": true,
+  "show_certificate_expiry": false,
+  "publicGroupList": [
+    {
+      "name": "開發Web服務",
+      "monitorList": [
+        {"id": 21, "sendUrl": false, "url": "https://dev-web.example.com"},
+        {"id": 22, "sendUrl": false, "url": "https://dev-admin.example.com"},
+        {"id": 23, "sendUrl": false, "url": "https://dev-portal.example.com"}
+      ]
+    },
+    {
+      "name": "開發API服務",
+      "monitorList": [
+        {"id": 24, "sendUrl": false, "url": "https://dev-api.example.com"},
+        {"id": 25, "sendUrl": false, "url": "https://dev-mobile-api.example.com"},
+        {"id": 26, "sendUrl": false, "url": "https://dev-webhook.example.com"}
+      ]
+    },
+    {
+      "name": "開發環境基礎設施",
+      "monitorList": [
+        {"id": 27, "sendUrl": false, "url": "https://dev-db.example.com"},
+        {"id": 28, "sendUrl": false, "url": "https://dev-cache.example.com"},
+        {"id": 29, "sendUrl": false, "url": "https://dev-queue.example.com"}
+      ]
+    }
+  ]
+}
+
+### 78. 創建分頁測試狀態頁面 - 測試環境儀表板
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "測試環境服務儀表板",
+  "slug": "testing-dashboard",
+  "description": "測試環境所有服務的監控狀態頁面，包含自動化測試服務",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "published": true,
+  "search_engine_index": false,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "測試Web應用",
+      "monitorList": [
+        {"id": 30, "sendUrl": false, "url": "https://test-app.example.com"},
+        {"id": 31, "sendUrl": false, "url": "https://test-admin.example.com"},
+        {"id": 32, "sendUrl": false, "url": "https://test-mobile.example.com"}
+      ]
+    },
+    {
+      "name": "測試API端點",
+      "monitorList": [
+        {"id": 33, "sendUrl": false, "url": "https://test-api.example.com"},
+        {"id": 34, "sendUrl": false, "url": "https://test-graphql.example.com"},
+        {"id": 35, "sendUrl": false, "url": "https://test-rest.example.com"},
+        {"id": 36, "sendUrl": false, "url": "https://test-webhook.example.com"}
+      ]
+    },
+    {
+      "name": "自動化測試服務",
+      "monitorList": [
+        {"id": 37, "sendUrl": false, "url": "https://selenium-grid.example.com"},
+        {"id": 38, "sendUrl": false, "url": "https://test-runner.example.com"},
+        {"id": 39, "sendUrl": false, "url": "https://performance-test.example.com"}
+      ]
+    },
+    {
+      "name": "測試數據服務",
+      "monitorList": [
+        {"id": 40, "sendUrl": false, "url": "https://test-db.example.com"},
+        {"id": 41, "sendUrl": false, "url": "https://test-data-seed.example.com"}
+      ]
+    }
+  ]
+}
+
+### 79. 創建分頁測試狀態頁面 - 客戶服務中心
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "客戶服務中心狀態",
+  "slug": "customer-service-center",
+  "description": "客戶服務相關系統的監控狀態頁面",
+  "theme": "light",
+  "autoRefreshInterval": 180,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": false,
+  "show_powered_by": false,
+  "show_certificate_expiry": false,
+  "publicGroupList": [
+    {
+      "name": "客服平台",
+      "monitorList": [
+        {"id": 42, "sendUrl": true},
+        {"id": 43, "sendUrl": false, "url": "https://live-chat.example.com"},
+        {"id": 44, "sendUrl": false, "url": "https://ticket-system.example.com"}
+      ]
+    },
+    {
+      "name": "知識管理",
+      "monitorList": [
+        {"id": 45, "sendUrl": true},
+        {"id": 46, "sendUrl": false, "url": "https://faq.example.com"},
+        {"id": 47, "sendUrl": false, "url": "https://help-center.example.com"}
+      ]
+    },
+    {
+      "name": "社群平台",
+      "monitorList": [
+        {"id": 48, "sendUrl": true},
+        {"id": 49, "sendUrl": false, "url": "https://community.example.com"},
+        {"id": 50, "sendUrl": false, "url": "https://user-feedback.example.com"}
+      ]
+    }
+  ]
+}
+
+### 80. 創建分頁測試狀態頁面 - 電商平台
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "電商平台服務狀態",
+  "slug": "ecommerce-platform",
+  "description": "電商相關服務的完整監控狀態頁面",
+  "theme": "dark",
+  "autoRefreshInterval": 120,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "前台購物系統",
+      "monitorList": [
+        {"id": 1, "sendUrl": false, "url": "https://shop.example.com"},
+        {"id": 2, "sendUrl": false, "url": "https://product.example.com"},
+        {"id": 3, "sendUrl": false, "url": "https://cart.example.com"},
+        {"id": 4, "sendUrl": false, "url": "https://checkout.example.com"}
+      ]
+    },
+    {
+      "name": "支付處理系統",
+      "monitorList": [
+        {"id": 5, "sendUrl": true},
+        {"id": 6, "sendUrl": false, "url": "https://payment-gateway.example.com"},
+        {"id": 7, "sendUrl": false, "url": "https://refund-service.example.com"},
+        {"id": 8, "sendUrl": false, "url": "https://wallet-service.example.com"}
+      ]
+    },
+    {
+      "name": "訂單管理系統",
+      "monitorList": [
+        {"id": 9, "sendUrl": false, "url": "https://order-service.example.com"},
+        {"id": 10, "sendUrl": false, "url": "https://inventory.example.com"},
+        {"id": 11, "sendUrl": false, "url": "https://shipping.example.com"},
+        {"id": 12, "sendUrl": false, "url": "https://tracking.example.com"}
+      ]
+    },
+    {
+      "name": "用戶賬戶系統",
+      "monitorList": [
+        {"id": 13, "sendUrl": false, "url": "https://user-account.example.com"},
+        {"id": 14, "sendUrl": false, "url": "https://profile.example.com"},
+        {"id": 15, "sendUrl": false, "url": "https://wishlist.example.com"},
+        {"id": 16, "sendUrl": false, "url": "https://loyalty.example.com"}
+      ]
+    },
+    {
+      "name": "商家管理系統",
+      "monitorList": [
+        {"id": 17, "sendUrl": false, "url": "https://merchant-portal.example.com"},
+        {"id": 18, "sendUrl": false, "url": "https://seller-dashboard.example.com"},
+        {"id": 19, "sendUrl": false, "url": "https://product-management.example.com"}
+      ]
+    },
+    {
+      "name": "數據分析系統",
+      "monitorList": [
+        {"id": 20, "sendUrl": true},
+        {"id": 21, "sendUrl": false, "url": "https://sales-analytics.example.com"},
+        {"id": 22, "sendUrl": false, "url": "https://user-behavior.example.com"},
+        {"id": 23, "sendUrl": false, "url": "https://recommendation.example.com"}
+      ]
+    }
+  ]
+}
+
+### 81. 創建分頁測試狀態頁面 - 金融服務平台
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "金融服務平台狀態",
+  "slug": "financial-services",
+  "description": "金融科技平台的核心服務監控",
+  "theme": "auto",
+  "autoRefreshInterval": 60,
+  "published": true,
+  "search_engine_index": false,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "核心銀行系統",
+      "monitorList": [
+        {"id": 24, "sendUrl": false, "url": "https://core-banking.example.com"},
+        {"id": 25, "sendUrl": false, "url": "https://account-service.example.com"},
+        {"id": 26, "sendUrl": false, "url": "https://transaction-service.example.com"},
+        {"id": 27, "sendUrl": false, "url": "https://balance-service.example.com"}
+      ]
+    },
+    {
+      "name": "支付和轉賬",
+      "monitorList": [
+        {"id": 28, "sendUrl": false, "url": "https://payment-processor.example.com"},
+        {"id": 29, "sendUrl": false, "url": "https://wire-transfer.example.com"},
+        {"id": 30, "sendUrl": false, "url": "https://international-transfer.example.com"}
+      ]
+    },
+    {
+      "name": "風險控制系統",
+      "monitorList": [
+        {"id": 31, "sendUrl": false, "url": "https://fraud-detection.example.com"},
+        {"id": 32, "sendUrl": false, "url": "https://risk-assessment.example.com"},
+        {"id": 33, "sendUrl": false, "url": "https://compliance.example.com"},
+        {"id": 34, "sendUrl": false, "url": "https://aml-system.example.com"}
+      ]
+    },
+    {
+      "name": "客戶服務系統",
+      "monitorList": [
+        {"id": 35, "sendUrl": false, "url": "https://customer-portal.example.com"},
+        {"id": 36, "sendUrl": false, "url": "https://mobile-banking.example.com"},
+        {"id": 37, "sendUrl": false, "url": "https://customer-support.example.com"}
+      ]
+    },
+    {
+      "name": "報告和合規",
+      "monitorList": [
+        {"id": 38, "sendUrl": false, "url": "https://regulatory-reporting.example.com"},
+        {"id": 39, "sendUrl": false, "url": "https://audit-system.example.com"},
+        {"id": 40, "sendUrl": false, "url": "https://compliance-dashboard.example.com"}
+      ]
+    }
+  ]
+}
+
+### ========================================
+### 分頁測試：大型 publicGroupList 更新測試
+### ========================================
+
+### 82. 更新狀態頁面 - 超大型publicGroupList (50+ 監控器)
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "大型分頁測試狀態頁面",
+  "description": "包含大量監控器和群組的測試頁面，用於測試分頁功能",
+  "publicGroupList": [
+    {
+      "name": "核心Web服務集群 (Group 1)",
+      "monitorList": [
+        {"id": 1, "sendUrl": true},
+        {"id": 2, "sendUrl": true},
+        {"id": 3, "sendUrl": false, "url": "https://web-cluster-1.example.com"},
+        {"id": 4, "sendUrl": false, "url": "https://web-cluster-2.example.com"},
+        {"id": 5, "sendUrl": false, "url": "https://web-cluster-3.example.com"},
+        {"id": 6, "sendUrl": false, "url": "https://web-cluster-4.example.com"},
+        {"id": 7, "sendUrl": false, "url": "https://web-cluster-5.example.com"}
+      ]
+    },
+    {
+      "name": "API服務集群 (Group 2)",
+      "monitorList": [
+        {"id": 8, "sendUrl": true},
+        {"id": 9, "sendUrl": true},
+        {"id": 10, "sendUrl": false, "url": "https://api-v1.example.com"},
+        {"id": 11, "sendUrl": false, "url": "https://api-v2.example.com"},
+        {"id": 12, "sendUrl": false, "url": "https://api-v3.example.com"},
+        {"id": 13, "sendUrl": false, "url": "https://api-v4.example.com"},
+        {"id": 14, "sendUrl": false, "url": "https://api-gateway-1.example.com"},
+        {"id": 15, "sendUrl": false, "url": "https://api-gateway-2.example.com"}
+      ]
+    },
+    {
+      "name": "數據庫服務集群 (Group 3)",
+      "monitorList": [
+        {"id": 16, "sendUrl": true},
+        {"id": 17, "sendUrl": true},
+        {"id": 18, "sendUrl": false, "url": "https://db-primary.example.com"},
+        {"id": 19, "sendUrl": false, "url": "https://db-replica-1.example.com"},
+        {"id": 20, "sendUrl": false, "url": "https://db-replica-2.example.com"},
+        {"id": 21, "sendUrl": false, "url": "https://db-replica-3.example.com"},
+        {"id": 22, "sendUrl": false, "url": "https://db-backup.example.com"}
+      ]
+    },
+    {
+      "name": "緩存和消息隊列 (Group 4)",
+      "monitorList": [
+        {"id": 23, "sendUrl": true},
+        {"id": 24, "sendUrl": true},
+        {"id": 25, "sendUrl": false, "url": "https://redis-cluster-1.example.com"},
+        {"id": 26, "sendUrl": false, "url": "https://redis-cluster-2.example.com"},
+        {"id": 27, "sendUrl": false, "url": "https://rabbitmq-1.example.com"},
+        {"id": 28, "sendUrl": false, "url": "https://rabbitmq-2.example.com"},
+        {"id": 29, "sendUrl": false, "url": "https://kafka-broker-1.example.com"},
+        {"id": 30, "sendUrl": false, "url": "https://kafka-broker-2.example.com"}
+      ]
+    },
+    {
+      "name": "微服務架構 - 用戶服務 (Group 5)",
+      "monitorList": [
+        {"id": 31, "sendUrl": false, "url": "https://user-service-1.example.com"},
+        {"id": 32, "sendUrl": false, "url": "https://user-service-2.example.com"},
+        {"id": 33, "sendUrl": false, "url": "https://auth-service-1.example.com"},
+        {"id": 34, "sendUrl": false, "url": "https://auth-service-2.example.com"},
+        {"id": 35, "sendUrl": false, "url": "https://profile-service.example.com"},
+        {"id": 36, "sendUrl": false, "url": "https://notification-service.example.com"}
+      ]
+    },
+    {
+      "name": "微服務架構 - 業務服務 (Group 6)",
+      "monitorList": [
+        {"id": 37, "sendUrl": false, "url": "https://order-service-1.example.com"},
+        {"id": 38, "sendUrl": false, "url": "https://order-service-2.example.com"},
+        {"id": 39, "sendUrl": false, "url": "https://payment-service-1.example.com"},
+        {"id": 40, "sendUrl": false, "url": "https://payment-service-2.example.com"},
+        {"id": 41, "sendUrl": false, "url": "https://inventory-service.example.com"},
+        {"id": 42, "sendUrl": false, "url": "https://shipping-service.example.com"}
+      ]
+    },
+    {
+      "name": "微服務架構 - 數據服務 (Group 7)",
+      "monitorList": [
+        {"id": 43, "sendUrl": false, "url": "https://analytics-service.example.com"},
+        {"id": 44, "sendUrl": false, "url": "https://reporting-service.example.com"},
+        {"id": 45, "sendUrl": false, "url": "https://search-service.example.com"},
+        {"id": 46, "sendUrl": false, "url": "https://recommendation-service.example.com"},
+        {"id": 47, "sendUrl": false, "url": "https://data-warehouse.example.com"},
+        {"id": 48, "sendUrl": false, "url": "https://etl-service.example.com"}
+      ]
+    },
+    {
+      "name": "CDN和靜態資源 (Group 8)",
+      "monitorList": [
+        {"id": 49, "sendUrl": false, "url": "https://cdn-primary.example.com"},
+        {"id": 50, "sendUrl": false, "url": "https://cdn-secondary.example.com"},
+        {"id": 1, "sendUrl": false, "url": "https://static-assets-1.example.com"},
+        {"id": 2, "sendUrl": false, "url": "https://static-assets-2.example.com"},
+        {"id": 3, "sendUrl": false, "url": "https://image-server-1.example.com"},
+        {"id": 4, "sendUrl": false, "url": "https://image-server-2.example.com"}
+      ]
+    },
+    {
+      "name": "第三方整合服務 (Group 9)",
+      "monitorList": [
+        {"id": 5, "sendUrl": false, "url": "https://payment-gateway-paypal.example.com"},
+        {"id": 6, "sendUrl": false, "url": "https://payment-gateway-stripe.example.com"},
+        {"id": 7, "sendUrl": false, "url": "https://social-login-facebook.example.com"},
+        {"id": 8, "sendUrl": false, "url": "https://social-login-google.example.com"},
+        {"id": 9, "sendUrl": false, "url": "https://email-service-sendgrid.example.com"},
+        {"id": 10, "sendUrl": false, "url": "https://sms-service-twilio.example.com"}
+      ]
+    },
+    {
+      "name": "監控和日誌系統 (Group 10)",
+      "monitorList": [
+        {"id": 11, "sendUrl": false, "url": "https://prometheus.example.com"},
+        {"id": 12, "sendUrl": false, "url": "https://grafana.example.com"},
+        {"id": 13, "sendUrl": false, "url": "https://elasticsearch.example.com"},
+        {"id": 14, "sendUrl": false, "url": "https://kibana.example.com"},
+        {"id": 15, "sendUrl": false, "url": "https://logstash.example.com"},
+        {"id": 16, "sendUrl": false, "url": "https://jaeger-tracing.example.com"}
+      ]
+    },
+    {
+      "name": "安全和合規系統 (Group 11)",
+      "monitorList": [
+        {"id": 17, "sendUrl": false, "url": "https://security-scanner.example.com"},
+        {"id": 18, "sendUrl": false, "url": "https://vulnerability-scanner.example.com"},
+        {"id": 19, "sendUrl": false, "url": "https://compliance-checker.example.com"},
+        {"id": 20, "sendUrl": false, "url": "https://audit-logger.example.com"},
+        {"id": 21, "sendUrl": false, "url": "https://firewall-controller.example.com"}
+      ]
+    },
+    {
+      "name": "開發和測試環境 (Group 12)",
+      "monitorList": [
+        {"id": 22, "sendUrl": false, "url": "https://dev-web.example.com"},
+        {"id": 23, "sendUrl": false, "url": "https://dev-api.example.com"},
+        {"id": 24, "sendUrl": false, "url": "https://staging-web.example.com"},
+        {"id": 25, "sendUrl": false, "url": "https://staging-api.example.com"},
+        {"id": 26, "sendUrl": false, "url": "https://test-automation.example.com"},
+        {"id": 27, "sendUrl": false, "url": "https://performance-test.example.com"}
+      ]
+    },
+    {
+      "name": "備份和災難恢復 (Group 13)",
+      "monitorList": [
+        {"id": 28, "sendUrl": false, "url": "https://backup-primary.example.com"},
+        {"id": 29, "sendUrl": false, "url": "https://backup-secondary.example.com"},
+        {"id": 30, "sendUrl": false, "url": "https://disaster-recovery.example.com"},
+        {"id": 31, "sendUrl": false, "url": "https://data-replication.example.com"},
+        {"id": 32, "sendUrl": false, "url": "https://backup-verification.example.com"}
+      ]
+    },
+    {
+      "name": "移動端服務 (Group 14)",
+      "monitorList": [
+        {"id": 33, "sendUrl": false, "url": "https://mobile-api-v1.example.com"},
+        {"id": 34, "sendUrl": false, "url": "https://mobile-api-v2.example.com"},
+        {"id": 35, "sendUrl": false, "url": "https://push-notification-ios.example.com"},
+        {"id": 36, "sendUrl": false, "url": "https://push-notification-android.example.com"},
+        {"id": 37, "sendUrl": false, "url": "https://mobile-analytics.example.com"}
+      ]
+    },
+    {
+      "name": "IoT和邊緣計算 (Group 15)",
+      "monitorList": [
+        {"id": 38, "sendUrl": false, "url": "https://iot-gateway.example.com"},
+        {"id": 39, "sendUrl": false, "url": "https://edge-computing-1.example.com"},
+        {"id": 40, "sendUrl": false, "url": "https://edge-computing-2.example.com"},
+        {"id": 41, "sendUrl": false, "url": "https://device-management.example.com"},
+        {"id": 42, "sendUrl": false, "url": "https://sensor-data-collector.example.com"}
+      ]
+    }
+  ]
+}
+
+### 83. 測試分頁API查詢 - 獲取所有狀態頁面（分頁）
+GET {{baseUrl}}/api/v1/status-pages?page=1&limit=5
+Authorization: {{apiKey}}
+
+### 84. 測試分頁API查詢 - 獲取第二頁狀態頁面
+GET {{baseUrl}}/api/v1/status-pages?page=2&limit=5
+Authorization: {{apiKey}}
+
+### 85. 測試分頁API查詢 - 獲取所有監控器（分頁）
+GET {{baseUrl}}/api/v1/monitors?page=1&limit=10
+Authorization: {{apiKey}}
+
+### 86. 測試分頁API查詢 - 獲取第二頁監控器
+GET {{baseUrl}}/api/v1/monitors?page=2&limit=10
+Authorization: {{apiKey}}
+
+### 87. 測試分頁API查詢 - 獲取第三頁監控器
+GET {{baseUrl}}/api/v1/monitors?page=3&limit=10
+Authorization: {{apiKey}}
+
+### 88. 測試大型狀態頁面查詢 - 包含群組
+GET {{baseUrl}}/api/v1/status-pages/full-test-page?includeGroups=true
+Authorization: {{apiKey}}
+
+### 89. 再次更新 - 添加更多監控器到現有群組
+PUT {{baseUrl}}/api/v1/status-pages/full-test-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "publicGroupList": [
+    {
+      "name": "超大型測試群組 A",
+      "monitorList": [
+        {"id": 1, "sendUrl": true},
+        {"id": 2, "sendUrl": true},
+        {"id": 3, "sendUrl": true},
+        {"id": 4, "sendUrl": true},
+        {"id": 5, "sendUrl": true},
+        {"id": 6, "sendUrl": false, "url": "https://service-1.example.com"},
+        {"id": 7, "sendUrl": false, "url": "https://service-2.example.com"},
+        {"id": 8, "sendUrl": false, "url": "https://service-3.example.com"},
+        {"id": 9, "sendUrl": false, "url": "https://service-4.example.com"},
+        {"id": 10, "sendUrl": false, "url": "https://service-5.example.com"},
+        {"id": 11, "sendUrl": false, "url": "https://service-6.example.com"},
+        {"id": 12, "sendUrl": false, "url": "https://service-7.example.com"},
+        {"id": 13, "sendUrl": false, "url": "https://service-8.example.com"},
+        {"id": 14, "sendUrl": false, "url": "https://service-9.example.com"},
+        {"id": 15, "sendUrl": false, "url": "https://service-10.example.com"}
+      ]
+    },
+    {
+      "name": "超大型測試群組 B",
+      "monitorList": [
+        {"id": 16, "sendUrl": false, "url": "https://microservice-1.example.com"},
+        {"id": 17, "sendUrl": false, "url": "https://microservice-2.example.com"},
+        {"id": 18, "sendUrl": false, "url": "https://microservice-3.example.com"},
+        {"id": 19, "sendUrl": false, "url": "https://microservice-4.example.com"},
+        {"id": 20, "sendUrl": false, "url": "https://microservice-5.example.com"},
+        {"id": 21, "sendUrl": false, "url": "https://microservice-6.example.com"},
+        {"id": 22, "sendUrl": false, "url": "https://microservice-7.example.com"},
+        {"id": 23, "sendUrl": false, "url": "https://microservice-8.example.com"},
+        {"id": 24, "sendUrl": false, "url": "https://microservice-9.example.com"},
+        {"id": 25, "sendUrl": false, "url": "https://microservice-10.example.com"},
+        {"id": 26, "sendUrl": false, "url": "https://microservice-11.example.com"},
+        {"id": 27, "sendUrl": false, "url": "https://microservice-12.example.com"}
+      ]
+    },
+    {
+      "name": "超大型測試群組 C",
+      "monitorList": [
+        {"id": 28, "sendUrl": false, "url": "https://database-cluster-1.example.com"},
+        {"id": 29, "sendUrl": false, "url": "https://database-cluster-2.example.com"},
+        {"id": 30, "sendUrl": false, "url": "https://database-cluster-3.example.com"},
+        {"id": 31, "sendUrl": false, "url": "https://cache-cluster-1.example.com"},
+        {"id": 32, "sendUrl": false, "url": "https://cache-cluster-2.example.com"},
+        {"id": 33, "sendUrl": false, "url": "https://cache-cluster-3.example.com"},
+        {"id": 34, "sendUrl": false, "url": "https://search-cluster-1.example.com"},
+        {"id": 35, "sendUrl": false, "url": "https://search-cluster-2.example.com"},
+        {"id": 36, "sendUrl": false, "url": "https://analytics-cluster-1.example.com"},
+        {"id": 37, "sendUrl": false, "url": "https://analytics-cluster-2.example.com"}
+      ]
+    }
+  ]
+}
+
+### 90. 測試分頁效能 - 查詢大量監控器
+GET {{baseUrl}}/api/v1/monitors?page=1&limit=50
+Authorization: {{apiKey}}
+
+### 91. 測試公開狀態頁面的分頁效果
+GET {{baseUrl}}/api/status-page/full-test-page
+
+### 92. 創建另一個大型測試狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "分頁壓力測試頁面",
+  "slug": "pagination-stress-test",
+  "description": "專門用於測試分頁功能的壓力測試頁面",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "published": true,
+  "publicGroupList": [
+    {
+      "name": "壓力測試群組 1 - Web服務",
+      "monitorList": [
+        {"id": 1, "sendUrl": false, "url": "https://web-1.stress-test.com"},
+        {"id": 2, "sendUrl": false, "url": "https://web-2.stress-test.com"},
+        {"id": 3, "sendUrl": false, "url": "https://web-3.stress-test.com"},
+        {"id": 4, "sendUrl": false, "url": "https://web-4.stress-test.com"},
+        {"id": 5, "sendUrl": false, "url": "https://web-5.stress-test.com"},
+        {"id": 6, "sendUrl": false, "url": "https://web-6.stress-test.com"},
+        {"id": 7, "sendUrl": false, "url": "https://web-7.stress-test.com"},
+        {"id": 8, "sendUrl": false, "url": "https://web-8.stress-test.com"}
+      ]
+    },
+    {
+      "name": "壓力測試群組 2 - API服務",
+      "monitorList": [
+        {"id": 9, "sendUrl": false, "url": "https://api-1.stress-test.com"},
+        {"id": 10, "sendUrl": false, "url": "https://api-2.stress-test.com"},
+        {"id": 11, "sendUrl": false, "url": "https://api-3.stress-test.com"},
+        {"id": 12, "sendUrl": false, "url": "https://api-4.stress-test.com"},
+        {"id": 13, "sendUrl": false, "url": "https://api-5.stress-test.com"},
+        {"id": 14, "sendUrl": false, "url": "https://api-6.stress-test.com"},
+        {"id": 15, "sendUrl": false, "url": "https://api-7.stress-test.com"},
+        {"id": 16, "sendUrl": false, "url": "https://api-8.stress-test.com"}
+      ]
+    },
+    {
+      "name": "壓力測試群組 3 - 數據庫",
+      "monitorList": [
+        {"id": 17, "sendUrl": false, "url": "https://db-1.stress-test.com"},
+        {"id": 18, "sendUrl": false, "url": "https://db-2.stress-test.com"},
+        {"id": 19, "sendUrl": false, "url": "https://db-3.stress-test.com"},
+        {"id": 20, "sendUrl": false, "url": "https://db-4.stress-test.com"},
+        {"id": 21, "sendUrl": false, "url": "https://db-5.stress-test.com"},
+        {"id": 22, "sendUrl": false, "url": "https://db-6.stress-test.com"}
+      ]
+    },
+    {
+      "name": "壓力測試群組 4 - 緩存",
+      "monitorList": [
+        {"id": 23, "sendUrl": false, "url": "https://cache-1.stress-test.com"},
+        {"id": 24, "sendUrl": false, "url": "https://cache-2.stress-test.com"},
+        {"id": 25, "sendUrl": false, "url": "https://cache-3.stress-test.com"},
+        {"id": 26, "sendUrl": false, "url": "https://cache-4.stress-test.com"}
+      ]
+    },
+    {
+      "name": "壓力測試群組 5 - 監控",
+      "monitorList": [
+        {"id": 27, "sendUrl": false, "url": "https://monitor-1.stress-test.com"},
+        {"id": 28, "sendUrl": false, "url": "https://monitor-2.stress-test.com"},
+        {"id": 29, "sendUrl": false, "url": "https://monitor-3.stress-test.com"},
+        {"id": 30, "sendUrl": false, "url": "https://monitor-4.stress-test.com"}
+      ]
+    }
+  ]
+}
+
+### 93. 測試分頁查詢 - 帶搜索條件
+GET {{baseUrl}}/api/v1/monitors?page=1&limit=10&search=test
+Authorization: {{apiKey}}
+
+### 94. 測試狀態頁面列表分頁
+GET {{baseUrl}}/api/v1/status-pages?page=1&limit=3
+Authorization: {{apiKey}}
+
+### 95. 驗證新創建的分頁測試頁面
+GET {{baseUrl}}/api/v1/status-pages/pagination-stress-test?includeGroups=true
+Authorization: {{apiKey}}
+
+### ========================================
+### 大量監控器創建 - 用於公開狀態頁面測試
+### ========================================
+
+### 96. 批量創建HTTP監控器 - 電商服務集群
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-商品服務",
+  "type": "http",
+  "url": "https://product-service.ecommerce.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "電商商品服務監控"
+}
+
+### 97. 電商-購物車服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-購物車服務",
+  "type": "http",
+  "url": "https://cart-service.ecommerce.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 8,
+  "method": "GET",
+  "description": "電商購物車服務監控"
+}
+
+### 98. 電商-訂單服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-訂單服務",
+  "type": "http",
+  "url": "https://order-service.ecommerce.com/health",
+  "interval": 45,
+  "active": true,
+  "retryInterval": 20,
+  "timeout": 12,
+  "method": "GET",
+  "description": "電商訂單服務監控"
+}
+
+### 99. 電商-支付服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-支付服務",
+  "type": "http",
+  "url": "https://payment-service.ecommerce.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 10,
+  "method": "GET",
+  "description": "電商支付服務監控"
+}
+
+### 100. 電商-庫存服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-庫存服務",
+  "type": "http",
+  "url": "https://inventory-service.ecommerce.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "電商庫存服務監控"
+}
+
+### 101. 電商-用戶服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-用戶服務",
+  "type": "http",
+  "url": "https://user-service.ecommerce.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "電商用戶服務監控"
+}
+
+### 102. 電商-推薦服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-推薦服務",
+  "type": "http",
+  "url": "https://recommendation-service.ecommerce.com/health",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 20,
+  "method": "GET",
+  "description": "電商推薦服務監控"
+}
+
+### 103. 電商-搜索服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "電商-搜索服務",
+  "type": "http",
+  "url": "https://search-service.ecommerce.com/health",
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 15,
+  "method": "GET",
+  "description": "電商搜索服務監控"
+}
+
+### 104. 批量創建金融服務監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "金融-核心銀行系統",
+  "type": "http",
+  "url": "https://core-banking.finance.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 10,
+  "method": "GET",
+  "description": "核心銀行系統監控"
+}
+
+### 105. 金融-交易處理系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "金融-交易處理系統",
+  "type": "http",
+  "url": "https://transaction-processor.finance.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 8,
+  "method": "GET",
+  "description": "金融交易處理系統監控"
+}
+
+### 106. 金融-風險控制系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "金融-風險控制系統",
+  "type": "http",
+  "url": "https://risk-management.finance.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 12,
+  "method": "GET",
+  "description": "金融風險控制系統監控"
+}
+
+### 107. 金融-合規監控系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "金融-合規監控系統",
+  "type": "http",
+  "url": "https://compliance.finance.com/health",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "method": "GET",
+  "description": "金融合規監控系統"
+}
+
+### 108. 金融-客戶服務系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "金融-客戶服務系統",
+  "type": "http",
+  "url": "https://customer-service.finance.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 10,
+  "method": "GET",
+  "description": "金融客戶服務系統監控"
+}
+
+### 109. 批量創建雲服務監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-計算實例管理",
+  "type": "http",
+  "url": "https://compute.cloud.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "雲計算實例管理服務"
+}
+
+### 110. 雲服務-存儲服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-存儲服務",
+  "type": "http",
+  "url": "https://storage.cloud.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "雲存儲服務監控"
+}
+
+### 111. 雲服務-網絡服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-網絡服務",
+  "type": "http",
+  "url": "https://network.cloud.com/health",
+  "interval": 45,
+  "active": true,
+  "retryInterval": 20,
+  "timeout": 8,
+  "method": "GET",
+  "description": "雲網絡服務監控"
+}
+
+### 112. 雲服務-數據庫服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-數據庫服務",
+  "type": "http",
+  "url": "https://database.cloud.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 12,
+  "method": "GET",
+  "description": "雲數據庫服務監控"
+}
+
+### 113. 雲服務-容器服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-容器服務",
+  "type": "http",
+  "url": "https://container.cloud.com/health",
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 10,
+  "method": "GET",
+  "description": "雲容器服務監控"
+}
+
+### 114. 雲服務-負載均衡器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "雲服務-負載均衡器",
+  "type": "http",
+  "url": "https://loadbalancer.cloud.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 8,
+  "method": "GET",
+  "description": "雲負載均衡器監控"
+}
+
+### 115. 批量創建媒體服務監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "媒體-視頻流服務",
+  "type": "http",
+  "url": "https://video-streaming.media.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 15,
+  "method": "GET",
+  "description": "視頻流媒體服務監控"
+}
+
+### 116. 媒體-音頻處理服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "媒體-音頻處理服務",
+  "type": "http",
+  "url": "https://audio-processing.media.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 20,
+  "method": "GET",
+  "description": "音頻處理服務監控"
+}
+
+### 117. 媒體-圖片處理服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "媒體-圖片處理服務",
+  "type": "http",
+  "url": "https://image-processing.media.com/health",
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 18,
+  "method": "GET",
+  "description": "圖片處理服務監控"
+}
+
+### 118. 媒體-CDN服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "媒體-CDN服務",
+  "type": "http",
+  "url": "https://cdn.media.com/health",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 25,
+  "method": "GET",
+  "description": "媒體CDN服務監控"
+}
+
+### 119. 批量創建IoT設備監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "IoT-設備管理平台",
+  "type": "http",
+  "url": "https://device-management.iot.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "IoT設備管理平台監控"
+}
+
+### 120. IoT-數據收集服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "IoT-數據收集服務",
+  "type": "http",
+  "url": "https://data-collector.iot.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "IoT數據收集服務監控"
+}
+
+### 121. IoT-邊緣計算服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "IoT-邊緣計算服務",
+  "type": "http",
+  "url": "https://edge-computing.iot.com/health",
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 12,
+  "method": "GET",
+  "description": "IoT邊緣計算服務監控"
+}
+
+### 122. IoT-分析服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "IoT-分析服務",
+  "type": "http",
+  "url": "https://analytics.iot.com/health",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 20,
+  "method": "GET",
+  "description": "IoT數據分析服務監控"
+}
+
+### 123. 批量創建遊戲服務監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "遊戲-用戶匹配服務",
+  "type": "http",
+  "url": "https://matchmaking.game.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 8,
+  "method": "GET",
+  "description": "遊戲用戶匹配服務監控"
+}
+
+### 124. 遊戲-遊戲服務器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "遊戲-遊戲服務器",
+  "type": "http",
+  "url": "https://game-server.game.com/health",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 10,
+  "method": "GET",
+  "description": "遊戲服務器監控"
+}
+
+### 125. 遊戲-排行榜服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "遊戲-排行榜服務",
+  "type": "http",
+  "url": "https://leaderboard.game.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "method": "GET",
+  "description": "遊戲排行榜服務監控"
+}
+
+### 126. 遊戲-虛擬商品服務
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "遊戲-虛擬商品服務",
+  "type": "http",
+  "url": "https://virtual-goods.game.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "遊戲虛擬商品服務監控"
+}
+
+### 127. 批量創建教育平台監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "教育-課程管理系統",
+  "type": "http",
+  "url": "https://course-management.edu.com/health",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "method": "GET",
+  "description": "教育課程管理系統監控"
+}
+
+### 128. 教育-在線學習平台
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "教育-在線學習平台",
+  "type": "http",
+  "url": "https://learning-platform.edu.com/health",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 12,
+  "method": "GET",
+  "description": "在線學習平台監控"
+}
+
+### 129. 教育-考試系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "教育-考試系統",
+  "type": "http",
+  "url": "https://exam-system.edu.com/health",
+  "interval": 45,
+  "active": true,
+  "retryInterval": 20,
+  "timeout": 10,
+  "method": "GET",
+  "description": "教育考試系統監控"
+}
+
+### 130. 教育-學生管理系統
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "教育-學生管理系統",
+  "type": "http",
+  "url": "https://student-management.edu.com/health",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "method": "GET",
+  "description": "學生管理系統監控"
+}
+
+### ========================================
+### 創建大型公開狀態頁面 - 整合所有監控器
+### ========================================
+
+### 131. 創建企業級綜合狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "企業級服務綜合監控中心",
+  "slug": "enterprise-comprehensive-status",
+  "description": "涵蓋電商、金融、雲服務、媒體、IoT、遊戲、教育等所有業務領域的綜合監控狀態頁面",
+  "theme": "dark",
+  "autoRefreshInterval": 60,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "🛒 電商服務集群",
+      "monitorList": [
+        {"id": 51, "sendUrl": true},
+        {"id": 52, "sendUrl": true},
+        {"id": 53, "sendUrl": true},
+        {"id": 54, "sendUrl": true},
+        {"id": 55, "sendUrl": true},
+        {"id": 56, "sendUrl": true},
+        {"id": 57, "sendUrl": true},
+        {"id": 58, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "🏦 金融服務核心",
+      "monitorList": [
+        {"id": 59, "sendUrl": true},
+        {"id": 60, "sendUrl": true},
+        {"id": 61, "sendUrl": true},
+        {"id": 62, "sendUrl": true},
+        {"id": 63, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "☁️ 雲基礎設施",
+      "monitorList": [
+        {"id": 64, "sendUrl": true},
+        {"id": 65, "sendUrl": true},
+        {"id": 66, "sendUrl": true},
+        {"id": 67, "sendUrl": true},
+        {"id": 68, "sendUrl": true},
+        {"id": 69, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "🎬 媒體處理服務",
+      "monitorList": [
+        {"id": 70, "sendUrl": true},
+        {"id": 71, "sendUrl": true},
+        {"id": 72, "sendUrl": true},
+        {"id": 73, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "🌐 IoT 物聯網平台",
+      "monitorList": [
+        {"id": 74, "sendUrl": true},
+        {"id": 75, "sendUrl": true},
+        {"id": 76, "sendUrl": true},
+        {"id": 77, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "🎮 遊戲服務平台",
+      "monitorList": [
+        {"id": 78, "sendUrl": true},
+        {"id": 79, "sendUrl": true},
+        {"id": 80, "sendUrl": true},
+        {"id": 81, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "📚 教育服務平台",
+      "monitorList": [
+        {"id": 82, "sendUrl": true},
+        {"id": 83, "sendUrl": true},
+        {"id": 84, "sendUrl": true},
+        {"id": 85, "sendUrl": true}
+      ]
+    }
+  ]
+}
+
+### 132. 創建電商專屬狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "電商平台服務狀態中心",
+  "slug": "ecommerce-service-status",
+  "description": "專門監控電商平台所有微服務的狀態頁面，包含前台、後台、支付、物流等完整業務鏈",
+  "theme": "light",
+  "autoRefreshInterval": 30,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": false,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "核心商務服務",
+      "monitorList": [
+        {"id": 51, "sendUrl": true},
+        {"id": 52, "sendUrl": true},
+        {"id": 53, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "支付與金融",
+      "monitorList": [
+        {"id": 54, "sendUrl": true},
+        {"id": 55, "sendUrl": false, "url": "https://payment-gateway-backup.ecommerce.com"}
+      ]
+    },
+    {
+      "name": "用戶體驗服務",
+      "monitorList": [
+        {"id": 56, "sendUrl": true},
+        {"id": 57, "sendUrl": true},
+        {"id": 58, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "數據與分析",
+      "monitorList": [
+        {"id": 57, "sendUrl": false, "url": "https://analytics.ecommerce.com"},
+        {"id": 58, "sendUrl": false, "url": "https://recommendation-engine.ecommerce.com"},
+        {"id": 51, "sendUrl": false, "url": "https://search-analytics.ecommerce.com"}
+      ]
+    }
+  ]
+}
+
+### 133. 創建金融科技狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "金融科技服務監控中心",
+  "slug": "fintech-monitoring-center",
+  "description": "金融科技平台的核心系統監控，包含交易處理、風險控制、合規監管等關鍵服務",
+  "theme": "dark",
+  "autoRefreshInterval": 15,
+  "published": true,
+  "search_engine_index": false,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "核心銀行系統",
+      "monitorList": [
+        {"id": 59, "sendUrl": true},
+        {"id": 60, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "風險與合規",
+      "monitorList": [
+        {"id": 61, "sendUrl": true},
+        {"id": 62, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "客戶服務",
+      "monitorList": [
+        {"id": 63, "sendUrl": true},
+        {"id": 59, "sendUrl": false, "url": "https://mobile-banking.finance.com"},
+        {"id": 60, "sendUrl": false, "url": "https://web-banking.finance.com"}
+      ]
+    },
+    {
+      "name": "數據處理與報告",
+      "monitorList": [
+        {"id": 61, "sendUrl": false, "url": "https://data-warehouse.finance.com"},
+        {"id": 62, "sendUrl": false, "url": "https://regulatory-reporting.finance.com"},
+        {"id": 63, "sendUrl": false, "url": "https://real-time-analytics.finance.com"}
+      ]
+    }
+  ]
+}
+
+### 134. 創建雲服務提供商狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "雲服務平台運營狀態",
+  "slug": "cloud-platform-status",
+  "description": "雲服務平台的基礎設施和服務監控，涵蓋計算、存儲、網絡、數據庫等核心服務",
+  "theme": "auto",
+  "autoRefreshInterval": 45,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": true,
+  "show_powered_by": true,
+  "show_certificate_expiry": false,
+  "publicGroupList": [
+    {
+      "name": "基礎計算服務",
+      "monitorList": [
+        {"id": 64, "sendUrl": true},
+        {"id": 68, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "存儲與數據庫",
+      "monitorList": [
+        {"id": 65, "sendUrl": true},
+        {"id": 67, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "網絡與安全",
+      "monitorList": [
+        {"id": 66, "sendUrl": true},
+        {"id": 69, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "高級服務",
+      "monitorList": [
+        {"id": 64, "sendUrl": false, "url": "https://ai-services.cloud.com"},
+        {"id": 65, "sendUrl": false, "url": "https://big-data.cloud.com"},
+        {"id": 66, "sendUrl": false, "url": "https://blockchain.cloud.com"},
+        {"id": 67, "sendUrl": false, "url": "https://iot-platform.cloud.com"}
+      ]
+    }
+  ]
+}
+
+### 135. 創建媒體與娛樂狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "媒體娛樂服務狀態監控",
+  "slug": "media-entertainment-status",
+  "description": "媒體和娛樂平台的服務監控，包含視頻流、音頻處理、圖片服務和內容分發網絡",
+  "theme": "light",
+  "autoRefreshInterval": 90,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": false,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "流媒體服務",
+      "monitorList": [
+        {"id": 70, "sendUrl": true},
+        {"id": 71, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "內容處理",
+      "monitorList": [
+        {"id": 72, "sendUrl": true},
+        {"id": 70, "sendUrl": false, "url": "https://video-transcoding.media.com"}
+      ]
+    },
+    {
+      "name": "分發網絡",
+      "monitorList": [
+        {"id": 73, "sendUrl": true},
+        {"id": 71, "sendUrl": false, "url": "https://global-cdn.media.com"},
+        {"id": 72, "sendUrl": false, "url": "https://edge-cache.media.com"}
+      ]
+    },
+    {
+      "name": "用戶體驗",
+      "monitorList": [
+        {"id": 73, "sendUrl": false, "url": "https://player-api.media.com"},
+        {"id": 70, "sendUrl": false, "url": "https://recommendation.media.com"},
+        {"id": 71, "sendUrl": false, "url": "https://user-analytics.media.com"}
+      ]
+    }
+  ]
+}
+
+### 136. 創建超大型整合狀態頁面 - 所有服務
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "全域服務監控總覽",
+  "slug": "global-service-overview",
+  "description": "企業所有業務線和技術服務的統一監控視圖，適合高級管理層和運維團隊查看整體服務健康狀況",
+  "theme": "dark",
+  "autoRefreshInterval": 120,
+  "published": true,
+  "search_engine_index": false,
+  "show_tags": true,
+  "show_powered_by": false,
+  "show_certificate_expiry": true,
+  "publicGroupList": [
+    {
+      "name": "電商業務線 (8個服務)",
+      "monitorList": [
+        {"id": 51, "sendUrl": true},
+        {"id": 52, "sendUrl": true},
+        {"id": 53, "sendUrl": true},
+        {"id": 54, "sendUrl": true},
+        {"id": 55, "sendUrl": true},
+        {"id": 56, "sendUrl": true},
+        {"id": 57, "sendUrl": true},
+        {"id": 58, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "金融業務線 (5個服務)",
+      "monitorList": [
+        {"id": 59, "sendUrl": true},
+        {"id": 60, "sendUrl": true},
+        {"id": 61, "sendUrl": true},
+        {"id": 62, "sendUrl": true},
+        {"id": 63, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "雲基礎設施 (6個服務)",
+      "monitorList": [
+        {"id": 64, "sendUrl": true},
+        {"id": 65, "sendUrl": true},
+        {"id": 66, "sendUrl": true},
+        {"id": 67, "sendUrl": true},
+        {"id": 68, "sendUrl": true},
+        {"id": 69, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "媒體服務 (4個服務)",
+      "monitorList": [
+        {"id": 70, "sendUrl": true},
+        {"id": 71, "sendUrl": true},
+        {"id": 72, "sendUrl": true},
+        {"id": 73, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "IoT平台 (4個服務)",
+      "monitorList": [
+        {"id": 74, "sendUrl": true},
+        {"id": 75, "sendUrl": true},
+        {"id": 76, "sendUrl": true},
+        {"id": 77, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "遊戲平台 (4個服務)",
+      "monitorList": [
+        {"id": 78, "sendUrl": true},
+        {"id": 79, "sendUrl": true},
+        {"id": 80, "sendUrl": true},
+        {"id": 81, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "教育平台 (4個服務)",
+      "monitorList": [
+        {"id": 82, "sendUrl": true},
+        {"id": 83, "sendUrl": true},
+        {"id": 84, "sendUrl": true},
+        {"id": 85, "sendUrl": true}
+      ]
+    },
+    {
+      "name": "擴展服務 (混合監控)",
+      "monitorList": [
+        {"id": 51, "sendUrl": false, "url": "https://backup-system.enterprise.com"},
+        {"id": 52, "sendUrl": false, "url": "https://monitoring-dashboard.enterprise.com"},
+        {"id": 53, "sendUrl": false, "url": "https://log-aggregation.enterprise.com"},
+        {"id": 54, "sendUrl": false, "url": "https://alerting-system.enterprise.com"},
+        {"id": 55, "sendUrl": false, "url": "https://metrics-collector.enterprise.com"},
+        {"id": 56, "sendUrl": false, "url": "https://health-checker.enterprise.com"},
+        {"id": 57, "sendUrl": false, "url": "https://performance-monitor.enterprise.com"},
+        {"id": 58, "sendUrl": false, "url": "https://security-scanner.enterprise.com"}
+      ]
+    }
+  ]
+}
+
+### 137. 測試查詢所有創建的狀態頁面
+GET {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+
+### 138. 驗證企業級綜合狀態頁面
+GET {{baseUrl}}/api/v1/status-pages/enterprise-comprehensive-status?includeGroups=true
+Authorization: {{apiKey}}
+
+### 139. 驗證全域服務監控總覽
+GET {{baseUrl}}/api/v1/status-pages/global-service-overview?includeGroups=true
+Authorization: {{apiKey}}
+
+### 140. 測試公開訪問 - 企業級狀態頁面
+GET {{baseUrl}}/api/status-page/enterprise-comprehensive-status
+
+### 141. 測試公開訪問 - 電商狀態頁面
+GET {{baseUrl}}/api/status-page/ecommerce-service-status
+
+### 142. 測試公開訪問 - 金融科技狀態頁面
+GET {{baseUrl}}/api/status-page/fintech-monitoring-center
+
+### 143. 測試公開訪問 - 雲服務狀態頁面
+GET {{baseUrl}}/api/status-page/cloud-platform-status
+
+### 144. 測試公開訪問 - 媒體娛樂狀態頁面
+GET {{baseUrl}}/api/status-page/media-entertainment-status
+
+### 145. 測試公開訪問 - 全域服務總覽
+GET {{baseUrl}}/api/status-page/global-service-overview
+
+### ========================================
+### 添加不同類型的監控器測試
+### ========================================
+
+### 146. 創建PING監控器 - 網絡基礎設施
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "網絡-主路由器",
+  "type": "ping",
+  "hostname": "router-main.network.com",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 5,
+  "description": "主要網絡路由器連通性監控"
+}
+
+### 147. PING監控器 - 備用路由器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "網絡-備用路由器",
+  "type": "ping",
+  "hostname": "router-backup.network.com",
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 8,
+  "description": "備用網絡路由器連通性監控"
+}
+
+### 148. PING監控器 - 交換機集群
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "網絡-核心交換機",
+  "type": "ping",
+  "hostname": "switch-core.network.com",
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 3,
+  "description": "核心網絡交換機監控"
+}
+
+### 149. 創建DNS監控器 - 主域名解析
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "DNS-主域名解析",
+  "type": "dns",
+  "hostname": "enterprise.com",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "dns_resolve_type": "A",
+  "description": "企業主域名DNS解析監控"
+}
+
+### 150. DNS監控器 - 子域名解析
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "DNS-API域名解析",
+  "type": "dns",
+  "hostname": "api.enterprise.com",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "dns_resolve_type": "CNAME",
+  "description": "API子域名DNS解析監控"
+}
+
+### 151. DNS監控器 - 郵件服務器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "DNS-郵件服務器MX記錄",
+  "type": "dns",
+  "hostname": "enterprise.com",
+  "interval": 600,
+  "active": true,
+  "retryInterval": 300,
+  "dns_resolve_type": "MX",
+  "description": "企業郵件服務器MX記錄監控"
+}
+
+### 152. 創建關鍵字監控器 - API健康檢查
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "關鍵字-API狀態檢查",
+  "type": "keyword",
+  "url": "https://api.enterprise.com/health",
+  "method": "GET",
+  "keyword": "healthy",
+  "invertKeyword": false,
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 10,
+  "description": "API健康狀態關鍵字監控"
+}
+
+### 153. 關鍵字監控器 - 錯誤頁面檢測
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "關鍵字-錯誤頁面檢測",
+  "type": "keyword",
+  "url": "https://www.enterprise.com",
+  "method": "GET",
+  "keyword": "error",
+  "invertKeyword": true,
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 15,
+  "description": "網站錯誤頁面檢測(反向關鍵字)"
+}
+
+### 154. 關鍵字監控器 - 服務可用性
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "關鍵字-服務可用性檢查",
+  "type": "keyword",
+  "url": "https://status.enterprise.com/api/status",
+  "method": "GET",
+  "keyword": "operational",
+  "invertKeyword": false,
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 12,
+  "description": "服務可用性狀態關鍵字監控"
+}
+
+### 155. 創建JSON查詢監控器 - API數據驗證
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "JSON查詢-用戶數據API",
+  "type": "json-query",
+  "url": "https://api.enterprise.com/users/stats",
+  "method": "GET",
+  "jsonPath": "$.status",
+  "expectedValue": "success",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "description": "用戶數據API JSON響應驗證"
+}
+
+### 156. JSON查詢監控器 - 系統指標
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "JSON查詢-系統負載指標",
+  "type": "json-query",
+  "url": "https://monitoring.enterprise.com/api/metrics",
+  "method": "GET",
+  "jsonPath": "$.cpu.usage",
+  "expectedValue": "<80",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 10,
+  "description": "系統CPU負載JSON指標監控"
+}
+
+### 157. 創建端口監控器 - 數據庫連接
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "端口-PostgreSQL數據庫",
+  "type": "port",
+  "hostname": "db-primary.enterprise.com",
+  "port": 5432,
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "timeout": 5,
+  "description": "PostgreSQL數據庫端口監控"
+}
+
+### 158. 端口監控器 - Redis緩存
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "端口-Redis緩存服務",
+  "type": "port",
+  "hostname": "cache.enterprise.com",
+  "port": 6379,
+  "interval": 30,
+  "active": true,
+  "retryInterval": 15,
+  "timeout": 3,
+  "description": "Redis緩存服務端口監控"
+}
+
+### 159. 端口監控器 - Elasticsearch
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "端口-Elasticsearch搜索",
+  "type": "port",
+  "hostname": "search.enterprise.com",
+  "port": 9200,
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 8,
+  "description": "Elasticsearch搜索服務端口監控"
+}
+
+### 160. 端口監控器 - RabbitMQ消息隊列
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "端口-RabbitMQ消息隊列",
+  "type": "port",
+  "hostname": "queue.enterprise.com",
+  "port": 5672,
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 6,
+  "description": "RabbitMQ消息隊列端口監控"
+}
+
+### 161. 創建Docker容器監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "Docker-Web應用容器",
+  "type": "docker",
+  "docker_container": "web-app-prod",
+  "docker_host": 1,
+  "interval": 60,
+  "active": true,
+  "retryInterval": 30,
+  "description": "生產環境Web應用Docker容器監控"
+}
+
+### 162. Docker容器監控器 - 數據庫
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "Docker-數據庫容器",
+  "type": "docker",
+  "docker_container": "postgres-primary",
+  "docker_host": 1,
+  "interval": 45,
+  "active": true,
+  "retryInterval": 20,
+  "description": "主數據庫Docker容器監控"
+}
+
+### 163. 創建SNMP監控器 - 網絡設備
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "SNMP-核心路由器狀態",
+  "type": "snmp",
+  "hostname": "router-core.network.com",
+  "snmp_community": "public",
+  "snmp_oid": "1.3.6.1.2.1.1.3.0",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 15,
+  "description": "核心路由器SNMP狀態監控"
+}
+
+### 164. SNMP監控器 - 交換機流量
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "SNMP-交換機流量監控",
+  "type": "snmp",
+  "hostname": "switch-main.network.com",
+  "snmp_community": "public",
+  "snmp_oid": "1.3.6.1.2.1.2.2.1.10.1",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 12,
+  "description": "主交換機網絡流量SNMP監控"
+}
+
+### 165. 創建Steam遊戲服務器監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "遊戲-Steam伺服器",
+  "type": "steam",
+  "hostname": "game-server-1.enterprise.com",
+  "port": 27015,
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 10,
+  "description": "Steam遊戲服務器監控"
+}
+
+### 166. 創建MQTT監控器 - IoT通信
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "MQTT-IoT設備通信",
+  "type": "mqtt",
+  "hostname": "mqtt.iot.enterprise.com",
+  "port": 1883,
+  "mqtt_topic": "devices/status",
+  "mqtt_username": "monitor",
+  "mqtt_password": "secret",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "description": "IoT設備MQTT通信監控"
+}
+
+### 167. 創建RabbitMQ監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "RabbitMQ-消息隊列狀態",
+  "type": "rabbitmq",
+  "hostname": "rabbitmq.enterprise.com",
+  "port": 15672,
+  "rabbitmq_username": "admin",
+  "rabbitmq_password": "password",
+  "interval": 120,
+  "active": true,
+  "retryInterval": 60,
+  "timeout": 12,
+  "description": "RabbitMQ消息隊列狀態監控"
+}
+
+### 168. 創建Kafka生產者監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "Kafka-消息生產者",
+  "type": "kafka-producer",
+  "hostname": "kafka.enterprise.com",
+  "port": 9092,
+  "kafka_producer_topic": "system-events",
+  "kafka_producer_message": "health-check",
+  "interval": 300,
+  "active": true,
+  "retryInterval": 180,
+  "timeout": 20,
+  "description": "Kafka消息生產者監控"
+}
+
+### 169. 創建gRPC監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "gRPC-微服務通信",
+  "type": "grpc",
+  "hostname": "grpc-api.enterprise.com",
+  "port": 50051,
+  "grpc_service": "HealthService",
+  "grpc_method": "Check",
+  "interval": 90,
+  "active": true,
+  "retryInterval": 45,
+  "timeout": 10,
+  "description": "gRPC微服務通信監控"
+}
+
+### 170. 創建SQL Server監控器
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "SQL Server-企業數據庫",
+  "type": "sqlserver",
+  "hostname": "sqlserver.enterprise.com",
+  "port": 1433,
+  "database": "EnterpriseDB",
+  "username": "monitor",
+  "password": "password",
+  "interval": 180,
+  "active": true,
+  "retryInterval": 90,
+  "timeout": 15,
+  "description": "SQL Server企業數據庫監控"
 }
 

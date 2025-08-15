@@ -328,7 +328,42 @@
                     👀 {{ $t("statusPageNothing") }}
                 </div>
 
-                <PublicGroupList :edit-mode="enableEditMode" :show-tags="config.showTags" :show-certificate-expiry="config.showCertificateExpiry" />
+                <!-- Group Tabs (only show if not in edit mode and has groups) -->
+                <div v-show="!enableEditMode && groupTabs && groupTabs.length > 0 && !loading && initialLoadComplete" class="mb-3">
+                    <ul class="nav nav-tabs">
+                        <li v-for="tab in groupTabs" :key="tab.id" class="nav-item">
+                            <button 
+                                class="nav-link"
+                                :class="{ active: activeTab === tab.id }"
+                                @click="switchTab(tab.id)"
+                                data-testid="group-tab"
+                            >
+                                {{ tab.name }}
+                                <span class="badge bg-secondary ms-1">{{ tab.count }}</span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <PublicGroupList 
+                    :edit-mode="enableEditMode" 
+                    :show-tags="config.showTags" 
+                    :show-certificate-expiry="config.showCertificateExpiry"
+                    :active-tab="activeTab"
+                    :page="page"
+                    :per-page="perPage"
+                />
+
+                <!-- Pagination (only show if not in edit mode and has pagination data) -->
+                <div v-show="!enableEditMode && pagination && pagination.totalPages >= 1 && !loading && initialLoadComplete" class="d-flex justify-content-center mt-4">
+                    <pagination
+                        v-model="page"
+                        :records="pagination.total"
+                        :per-page="pagination.perPage"
+                        :options="paginationConfig"
+                        data-testid="status-page-pagination"
+                    />
+                </div>
             </div>
 
             <footer class="mt-5 mb-4">
@@ -360,6 +395,48 @@
     </div>
 </template>
 
+<style scoped>
+/* Tab styling for better mobile experience */
+@media (max-width: 768px) {
+    .nav-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .nav-tabs .nav-item {
+        flex: 1;
+        min-width: auto;
+    }
+    
+    .nav-tabs .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .nav-tabs .badge {
+        font-size: 0.75rem;
+        margin-left: 0.25rem;
+    }
+}
+
+/* Pagination styling */
+.kuma_pagination {
+    margin-top: 1rem;
+}
+
+/* Tab count badge styling */
+.nav-tabs .nav-link .badge {
+    margin-left: 0.5rem;
+}
+
+.nav-tabs .nav-link.active .badge {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    color: var(--bs-primary) !important;
+}
+</style>
+
 <script>
 import axios from "axios";
 import dayjs from "dayjs";
@@ -383,6 +460,7 @@ import { getResBaseURL } from "../util-frontend";
 import { STATUS_PAGE_ALL_DOWN, STATUS_PAGE_ALL_UP, STATUS_PAGE_MAINTENANCE, STATUS_PAGE_PARTIAL_DOWN, UP, MAINTENANCE } from "../util.ts";
 import Tag from "../components/Tag.vue";
 import VueMultiselect from "vue-multiselect";
+import Pagination from "v-pagination-3";
 
 const toast = useToast();
 dayjs.extend(duration);
@@ -405,7 +483,8 @@ export default {
         PrismEditor,
         MaintenanceTime,
         Tag,
-        VueMultiselect
+        VueMultiselect,
+        Pagination
     },
 
     // Leave Page for vue route change
@@ -451,6 +530,18 @@ export default {
             updateCountdown: null,
             updateCountdownText: null,
             loading: true,
+            // Pagination and Tab related properties
+            activeTab: 'all',
+            page: 1,
+            perPage: 10,
+            pagination: null,
+            groupTabs: [],
+            tabsInitialized: false,
+            initialLoadComplete: false,
+            paginationConfig: {
+                hideCount: true,
+                chunksNavigation: "scroll",
+            }
         };
     },
     computed: {
@@ -673,6 +764,16 @@ export default {
                     }
                 }
             }
+        },
+
+        /**
+         * Watch for page changes to reload data
+         * @returns {void}
+         */
+        page() {
+            if (!this.enableEditMode) {
+                this.loadStatusPageData();
+            }
         }
 
     },
@@ -713,9 +814,39 @@ export default {
 
             this.incident = res.data.incident;
             this.maintenanceList = res.data.maintenanceList;
-            this.$root.publicGroupList = res.data.publicGroupList;
+            
+            // Handle initial data load and tab generation
+            if (res.data.publicGroupList) {
+                this.$root.publicGroupList = res.data.publicGroupList;
+                // Only generate tabs if we don't have pagination support in the initial response
+                if (!res.data.groupTabs && !res.data.pagination) {
+                    this.generateTabsFromData();
+                }
+                this.loadedData = true;
+            }
 
-            this.loading = false;
+            // If not in edit mode, try to load paginated data
+            if (!this.enableEditMode) {
+                this.loadStatusPageData().then(() => {
+                    this.loading = false;
+                    // Use nextTick to ensure DOM is updated before showing tabs
+                    this.$nextTick(() => {
+                        // Add a small delay to prevent flash during initial load
+                        setTimeout(() => {
+                            this.initialLoadComplete = true;
+                            console.log('Initial load complete, showing tabs');
+                        }, 100);
+                    });
+                });
+            } else {
+                this.loading = false;
+                this.$nextTick(() => {
+                    setTimeout(() => {
+                        this.initialLoadComplete = true;
+                        console.log('Edit mode load complete');
+                    }, 100);
+                });
+            }
 
             // Configure auto-refresh loop
             feedInterval = setInterval(() => {
@@ -753,6 +884,133 @@ export default {
             } else {
                 return axios.get("/api/status-page/" + this.slug);
             }
+        },
+
+        /**
+         * Load status page data with pagination and tab support
+         * @returns {Promise<void>}
+         */
+        async loadStatusPageData() {
+            if (this.enableEditMode) {
+                return Promise.resolve(); // Don't load paginated data in edit mode
+            }
+
+            try {
+                const params = new URLSearchParams();
+                if (this.activeTab !== 'all') {
+                    params.append('group', this.activeTab);
+                }
+                params.append('page', this.page);
+                params.append('limit', this.perPage);
+
+                const url = `/api/status-page/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                const response = await axios.get(url);
+                
+                if (response.data) {
+                    // Update existing data structure
+                    this.$root.publicGroupList = response.data.publicGroupList || [];
+                    
+                    // Set pagination data if available
+                    if (response.data.pagination) {
+                        this.pagination = response.data.pagination;
+                    }
+                    
+                    // Set group tabs if available, otherwise keep existing ones
+                    if (response.data.groupTabs && response.data.groupTabs.length > 0) {
+                        this.groupTabs = response.data.groupTabs;
+                    } else if (!this.groupTabs || this.groupTabs.length === 0) {
+                        // Fallback: generate tabs from publicGroupList
+                        this.generateTabsFromData();
+                    }
+                    
+                    // Ensure "All" tab exists and is first
+                    if (this.groupTabs && !this.groupTabs.find(tab => tab.id === 'all')) {
+                        this.groupTabs.unshift({ id: 'all', name: 'All', count: this.pagination?.total || 0 });
+                    }
+                    
+                    // Mark data as loaded
+                    this.loadedData = true;
+                    this.tabsInitialized = true;
+                    
+                    console.log('Loaded paginated data:', {
+                        groupTabs: this.groupTabs,
+                        pagination: this.pagination,
+                        enableEditMode: this.enableEditMode,
+                        activeTab: this.activeTab,
+                        publicGroupListLength: this.$root.publicGroupList.length,
+                        loading: this.loading
+                    });
+                }
+                
+                return Promise.resolve();
+            } catch (error) {
+                console.error('Error loading status page data:', error);
+                // Fallback to original method
+                return this.getData().then((res) => {
+                    if (res.data.publicGroupList) {
+                        this.$root.publicGroupList = res.data.publicGroupList;
+                        // Generate tabs from existing data
+                        this.generateTabsFromData();
+                        this.loadedData = true;
+                        this.tabsInitialized = true;
+                        this.initialLoadComplete = true;
+                    }
+                });
+            }
+        },
+
+        /**
+         * Generate tabs from existing publicGroupList data (fallback)
+         * @returns {void}
+         */
+        generateTabsFromData() {
+            this.groupTabs = [{ id: 'all', name: 'All', count: 0 }];
+            let totalCount = 0;
+
+            for (const group of this.$root.publicGroupList) {
+                const monitorCount = group.monitorList ? group.monitorList.length : 0;
+                totalCount += monitorCount;
+                
+                this.groupTabs.push({
+                    id: group.id,
+                    name: group.name,
+                    count: monitorCount
+                });
+            }
+
+            // Update "All" tab count
+            this.groupTabs[0].count = totalCount;
+            
+            // Mark data as loaded
+            this.loadedData = true;
+            this.tabsInitialized = true;
+            
+            console.log('Generated tabs from data:', {
+                tabs: this.groupTabs,
+                activeTab: this.activeTab,
+                totalGroups: this.$root.publicGroupList.length
+            });
+        },
+
+        /**
+         * Switch to a different tab
+         * @param {string|number} tabId - Tab ID to switch to
+         * @returns {void}
+         */
+        switchTab(tabId) {
+            if (this.activeTab === tabId) {
+                return; // Don't reload if clicking the same tab
+            }
+            
+            console.log('Switching tab from', this.activeTab, 'to', tabId);
+            this.activeTab = tabId;
+            this.page = 1; // Reset to first page when switching tabs
+            
+            // Don't change initialLoadComplete during tab switching
+            this.loadStatusPageData().then(() => {
+                // Keep tabs visible during switching
+                console.log('Tab switch complete');
+            });
         },
 
         /**

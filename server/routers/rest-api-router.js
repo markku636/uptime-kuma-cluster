@@ -1106,6 +1106,374 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
 
 /**
  * @swagger
+ * /api/v1/monitors:
+ *   post:
+ *     summary: Create a new monitor
+ *     tags: [Monitors]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - type
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Monitor name
+ *               type:
+ *                 type: string
+ *                 enum: [http, ping, dns, port, push, steam, gamedig, docker, sqlserver, postgres, mysql, radius, redis, kafka-producer, grpc-keyword, json-query, keyword, manual]
+ *                 description: Monitor type
+ *               url:
+ *                 type: string
+ *                 description: Monitor URL (required for http, keyword, json-query)
+ *               hostname:
+ *                 type: string
+ *                 description: Hostname (required for ping, dns, port, radius)
+ *               port:
+ *                 type: integer
+ *                 description: Port number (for port monitors)
+ *               interval:
+ *                 type: integer
+ *                 default: 60
+ *                 description: Check interval in seconds
+ *               active:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Monitor active status
+ *               retryInterval:
+ *                 type: integer
+ *                 default: 30
+ *                 description: Retry interval in seconds
+ *               timeout:
+ *                 type: integer
+ *                 default: 10
+ *                 description: Request timeout in seconds
+ *               method:
+ *                 type: string
+ *                 default: GET
+ *                 description: HTTP method (for http monitors)
+ *               node_id:
+ *                 type: string
+ *                 description: Node ID for load balancing
+ *               keyword:
+ *                 type: string
+ *                 description: Keyword to search for (keyword monitors)
+ *               invertKeyword:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Invert keyword match
+ *               headers:
+ *                 type: string
+ *                 description: HTTP headers as JSON string
+ *               body:
+ *                 type: string
+ *                 description: HTTP request body
+ *               basic_auth_user:
+ *                 type: string
+ *                 description: Basic auth username
+ *               basic_auth_pass:
+ *                 type: string
+ *                 description: Basic auth password
+ *               maxretries:
+ *                 type: integer
+ *                 default: 0
+ *                 description: Maximum retries
+ *               upsideDown:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Invert status (down = up)
+ *               ignoreTls:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Ignore TLS errors
+ *               description:
+ *                 type: string
+ *                 description: Monitor description
+ *     responses:
+ *       201:
+ *         description: Monitor created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Monitor created successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Monitor ID
+ *                     name:
+ *                       type: string
+ *                       description: Monitor name
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        // Validate required fields
+        if (!req.body.name || !req.body.type) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Missing required fields: name and type"
+            });
+        }
+        
+        // Create new monitor
+        const monitor = R.dispense("monitor");
+        monitor.user_id = req.userId;
+        monitor.name = req.body.name.trim();
+        monitor.type = req.body.type;
+        
+        // Set default values
+        monitor.interval = req.body.interval || 60;
+        monitor.active = req.body.active !== undefined ? req.body.active : true;
+        monitor.retryInterval = req.body.retryInterval || 30;
+        monitor.timeout = req.body.timeout || 10;
+        monitor.maxretries = req.body.maxretries || 0;
+        monitor.upsideDown = req.body.upsideDown || false;
+        monitor.ignoreTls = req.body.ignoreTls || false;
+        
+        // Set type-specific fields
+        if (req.body.url) monitor.url = req.body.url;
+        if (req.body.hostname) monitor.hostname = req.body.hostname;
+        if (req.body.port) monitor.port = req.body.port;
+        if (req.body.method) monitor.method = req.body.method;
+        if (req.body.keyword) monitor.keyword = req.body.keyword;
+        if (req.body.invertKeyword !== undefined) monitor.invertKeyword = req.body.invertKeyword;
+        if (req.body.headers) monitor.headers = req.body.headers;
+        if (req.body.body) monitor.body = req.body.body;
+        if (req.body.basic_auth_user) monitor.basic_auth_user = req.body.basic_auth_user;
+        if (req.body.basic_auth_pass) monitor.basic_auth_pass = req.body.basic_auth_pass;
+        if (req.body.node_id) monitor.node_id = req.body.node_id;
+        if (req.body.description) monitor.description = req.body.description;
+        
+        // Validate monitor configuration
+        try {
+            monitor.validate();
+        } catch (error) {
+            return res.status(400).json({
+                ok: false,
+                msg: error.message
+            });
+        }
+        
+        await R.store(monitor);
+        
+        res.status(201).json({
+            ok: true,
+            msg: "Monitor created successfully",
+            data: {
+                id: monitor.id,
+                name: monitor.name,
+                type: monitor.type,
+                active: monitor.active
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/monitors/{id}:
+ *   put:
+ *     summary: Update monitor by ID
+ *     tags: [Monitors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Monitor ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Monitor name
+ *               url:
+ *                 type: string
+ *                 description: Monitor URL
+ *               hostname:
+ *                 type: string
+ *                 description: Hostname
+ *               port:
+ *                 type: integer
+ *                 description: Port number
+ *               interval:
+ *                 type: integer
+ *                 description: Check interval in seconds
+ *               active:
+ *                 type: boolean
+ *                 description: Monitor active status
+ *               retryInterval:
+ *                 type: integer
+ *                 description: Retry interval in seconds
+ *               timeout:
+ *                 type: integer
+ *                 description: Request timeout in seconds
+ *               method:
+ *                 type: string
+ *                 description: HTTP method
+ *               keyword:
+ *                 type: string
+ *                 description: Keyword to search for
+ *               invertKeyword:
+ *                 type: boolean
+ *                 description: Invert keyword match
+ *               headers:
+ *                 type: string
+ *                 description: HTTP headers as JSON string
+ *               body:
+ *                 type: string
+ *                 description: HTTP request body
+ *               basic_auth_user:
+ *                 type: string
+ *                 description: Basic auth username
+ *               basic_auth_pass:
+ *                 type: string
+ *                 description: Basic auth password
+ *               maxretries:
+ *                 type: integer
+ *                 description: Maximum retries
+ *               upsideDown:
+ *                 type: boolean
+ *                 description: Invert status
+ *               ignoreTls:
+ *                 type: boolean
+ *                 description: Ignore TLS errors
+ *               description:
+ *                 type: string
+ *                 description: Monitor description
+ *               node_id:
+ *                 type: string
+ *                 description: Node ID for load balancing
+ *     responses:
+ *       200:
+ *         description: Monitor updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Monitor updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Monitor ID
+ *                     name:
+ *                       type: string
+ *                       description: Monitor name
+ *       404:
+ *         description: Monitor not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const monitorId = parseInt(req.params.id);
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
+        
+        if (!monitor) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Monitor not found"
+            });
+        }
+        
+        // Update fields if provided
+        if (req.body.name !== undefined) monitor.name = req.body.name.trim();
+        if (req.body.url !== undefined) monitor.url = req.body.url;
+        if (req.body.hostname !== undefined) monitor.hostname = req.body.hostname;
+        if (req.body.port !== undefined) monitor.port = req.body.port;
+        if (req.body.interval !== undefined) monitor.interval = req.body.interval;
+        if (req.body.active !== undefined) monitor.active = req.body.active;
+        if (req.body.retryInterval !== undefined) monitor.retryInterval = req.body.retryInterval;
+        if (req.body.timeout !== undefined) monitor.timeout = req.body.timeout;
+        if (req.body.method !== undefined) monitor.method = req.body.method;
+        if (req.body.keyword !== undefined) monitor.keyword = req.body.keyword;
+        if (req.body.invertKeyword !== undefined) monitor.invertKeyword = req.body.invertKeyword;
+        if (req.body.headers !== undefined) monitor.headers = req.body.headers;
+        if (req.body.body !== undefined) monitor.body = req.body.body;
+        if (req.body.basic_auth_user !== undefined) monitor.basic_auth_user = req.body.basic_auth_user;
+        if (req.body.basic_auth_pass !== undefined) monitor.basic_auth_pass = req.body.basic_auth_pass;
+        if (req.body.maxretries !== undefined) monitor.maxretries = req.body.maxretries;
+        if (req.body.upsideDown !== undefined) monitor.upsideDown = req.body.upsideDown;
+        if (req.body.ignoreTls !== undefined) monitor.ignoreTls = req.body.ignoreTls;
+        if (req.body.description !== undefined) monitor.description = req.body.description;
+        if (req.body.node_id !== undefined) monitor.node_id = req.body.node_id;
+        
+        // Validate monitor configuration
+        try {
+            monitor.validate();
+        } catch (error) {
+            return res.status(400).json({
+                ok: false,
+                msg: error.message
+            });
+        }
+        
+        await R.store(monitor);
+        
+        res.json({
+            ok: true,
+            msg: "Monitor updated successfully",
+            data: {
+                id: monitor.id,
+                name: monitor.name,
+                type: monitor.type,
+                active: monitor.active
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
  * /api/v1/status-pages:
  *   get:
  *     summary: Get all status pages
@@ -1205,6 +1573,54 @@ router.get("/api/v1/status-pages", authenticateToken, async (req, res) => {
  *                 type: integer
  *                 description: Auto refresh interval in seconds
  *                 example: 300
+ *               published:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Whether the status page is published
+ *               search_engine_index:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Whether to allow search engine indexing
+ *               show_tags:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Whether to show tags
+ *               show_powered_by:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Whether to show powered by text
+ *               show_certificate_expiry:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Whether to show certificate expiry
+ *               publicGroupList:
+ *                 type: array
+ *                 description: List of public groups with monitors to create
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                       description: Group name
+ *                       example: "Web Services"
+ *                     monitorList:
+ *                       type: array
+ *                       description: List of monitors to add to this group
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Monitor ID
+ *                             example: 1
+ *                           sendUrl:
+ *                             type: boolean
+ *                             description: Whether to send URL
+ *                             example: true
+ *                           url:
+ *                             type: string
+ *                             description: Custom URL for the monitor
+ *                             example: "https://custom.example.com"
  *     responses:
  *       201:
  *         description: Status page created successfully
@@ -1304,6 +1720,46 @@ router.post("/api/v1/status-pages", authenticateToken, [
         statusPage.show_certificate_expiry = req.body.show_certificate_expiry !== undefined ? req.body.show_certificate_expiry : false;
         
         await R.store(statusPage);
+        
+        // Handle publicGroupList if provided
+        if (req.body.publicGroupList && Array.isArray(req.body.publicGroupList)) {
+            let groupOrder = 1;
+            
+            for (let group of req.body.publicGroupList) {
+                const groupBean = R.dispense("group");
+                groupBean.status_page_id = statusPage.id;
+                groupBean.name = group.name;
+                groupBean.public = true;
+                groupBean.weight = groupOrder++;
+                
+                await R.store(groupBean);
+                
+                let monitorOrder = 1;
+                
+                if (group.monitorList && Array.isArray(group.monitorList)) {
+                    for (let monitor of group.monitorList) {
+                        // Verify monitor exists
+                        const monitorBean = await R.findOne("monitor", " id = ? ", [monitor.id]);
+                        if (monitorBean) {
+                            const relationBean = R.dispense("monitor_group");
+                            relationBean.weight = monitorOrder++;
+                            relationBean.group_id = groupBean.id;
+                            relationBean.monitor_id = monitor.id;
+                            
+                            if (monitor.sendUrl !== undefined) {
+                                relationBean.send_url = monitor.sendUrl;
+                            }
+                            
+                            if (monitor.url !== undefined) {
+                                relationBean.custom_url = monitor.url;
+                            }
+                            
+                            await R.store(relationBean);
+                        }
+                    }
+                }
+            }
+        }
         
         res.status(201).json({
             ok: true,
@@ -1760,6 +2216,392 @@ router.delete("/api/v1/status-pages/:slug", authenticateToken, async (req, res) 
         res.json({
             ok: true,
             msg: "Status page deleted successfully"
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/groups:
+ *   post:
+ *     summary: Create a new group
+ *     tags: [Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - status_page_id
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Group name
+ *               status_page_id:
+ *                 type: integer
+ *                 description: Status page ID this group belongs to
+ *               public:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Whether the group is public
+ *               weight:
+ *                 type: integer
+ *                 default: 1
+ *                 description: Group display order
+ *               monitorList:
+ *                 type: array
+ *                 description: List of monitors to add to this group
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Monitor ID
+ *                     sendUrl:
+ *                       type: boolean
+ *                       description: Whether to send URL
+ *                     url:
+ *                       type: string
+ *                       description: Custom URL for the monitor
+ *                     weight:
+ *                       type: integer
+ *                       description: Monitor order in group
+ *     responses:
+ *       201:
+ *         description: Group created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Group created successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Group ID
+ *                     name:
+ *                       type: string
+ *                       description: Group name
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/api/v1/groups", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        // Validate required fields
+        if (!req.body.name || !req.body.status_page_id) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Missing required fields: name and status_page_id"
+            });
+        }
+        
+        // Verify status page exists
+        const statusPage = await R.findOne("status_page", " id = ? ", [req.body.status_page_id]);
+        if (!statusPage) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Status page not found"
+            });
+        }
+        
+        // Create new group
+        const group = R.dispense("group");
+        group.name = req.body.name.trim();
+        group.status_page_id = req.body.status_page_id;
+        group.public = req.body.public !== undefined ? req.body.public : true;
+        group.weight = req.body.weight || 1;
+        
+        await R.store(group);
+        
+        // Handle monitor list if provided
+        if (req.body.monitorList && Array.isArray(req.body.monitorList)) {
+            let monitorOrder = 1;
+            
+            for (let monitor of req.body.monitorList) {
+                // Verify monitor exists and belongs to user
+                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitor.id, req.userId]);
+                if (monitorBean) {
+                    const relationBean = R.dispense("monitor_group");
+                    relationBean.weight = monitor.weight || monitorOrder++;
+                    relationBean.group_id = group.id;
+                    relationBean.monitor_id = monitor.id;
+                    
+                    if (monitor.sendUrl !== undefined) {
+                        relationBean.send_url = monitor.sendUrl;
+                    }
+                    
+                    if (monitor.url !== undefined) {
+                        relationBean.custom_url = monitor.url;
+                    }
+                    
+                    await R.store(relationBean);
+                }
+            }
+        }
+        
+        res.status(201).json({
+            ok: true,
+            msg: "Group created successfully",
+            data: {
+                id: group.id,
+                name: group.name,
+                status_page_id: group.status_page_id,
+                public: group.public,
+                weight: group.weight
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/groups/{id}:
+ *   put:
+ *     summary: Update group by ID
+ *     tags: [Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Group ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Group name
+ *               public:
+ *                 type: boolean
+ *                 description: Whether the group is public
+ *               weight:
+ *                 type: integer
+ *                 description: Group display order
+ *               monitorList:
+ *                 type: array
+ *                 description: List of monitors in this group
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Monitor ID
+ *                     sendUrl:
+ *                       type: boolean
+ *                       description: Whether to send URL
+ *                     url:
+ *                       type: string
+ *                       description: Custom URL for the monitor
+ *                     weight:
+ *                       type: integer
+ *                       description: Monitor order in group
+ *     responses:
+ *       200:
+ *         description: Group updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Group updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Group ID
+ *                     name:
+ *                       type: string
+ *                       description: Group name
+ *       404:
+ *         description: Group not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.put("/api/v1/groups/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const groupId = parseInt(req.params.id);
+        const group = await R.findOne("group", " id = ? ", [groupId]);
+        
+        if (!group) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Group not found"
+            });
+        }
+        
+        // Update fields if provided
+        if (req.body.name !== undefined) group.name = req.body.name.trim();
+        if (req.body.public !== undefined) group.public = req.body.public;
+        if (req.body.weight !== undefined) group.weight = req.body.weight;
+        
+        await R.store(group);
+        
+        // Handle monitor list if provided
+        if (req.body.monitorList && Array.isArray(req.body.monitorList)) {
+            // Clear existing monitor relationships for this group
+            await R.exec("DELETE FROM monitor_group WHERE group_id = ? ", [group.id]);
+            
+            let monitorOrder = 1;
+            
+            for (let monitor of req.body.monitorList) {
+                // Verify monitor exists and belongs to user
+                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitor.id, req.userId]);
+                if (monitorBean) {
+                    const relationBean = R.dispense("monitor_group");
+                    relationBean.weight = monitor.weight || monitorOrder++;
+                    relationBean.group_id = group.id;
+                    relationBean.monitor_id = monitor.id;
+                    
+                    if (monitor.sendUrl !== undefined) {
+                        relationBean.send_url = monitor.sendUrl;
+                    }
+                    
+                    if (monitor.url !== undefined) {
+                        relationBean.custom_url = monitor.url;
+                    }
+                    
+                    await R.store(relationBean);
+                }
+            }
+        }
+        
+        res.json({
+            ok: true,
+            msg: "Group updated successfully",
+            data: {
+                id: group.id,
+                name: group.name,
+                public: group.public,
+                weight: group.weight
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/groups/{id}:
+ *   get:
+ *     summary: Get group by ID
+ *     tags: [Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Group ID
+ *     responses:
+ *       200:
+ *         description: Group details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     status_page_id:
+ *                       type: integer
+ *                     public:
+ *                       type: boolean
+ *                     weight:
+ *                       type: integer
+ *                     monitorList:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       404:
+ *         description: Group not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get("/api/v1/groups/:id", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const groupId = parseInt(req.params.id);
+        const group = await R.findOne("group", " id = ? ", [groupId]);
+        
+        if (!group) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Group not found"
+            });
+        }
+        
+        // Get group with monitors
+        const groupBean = await R.load("group", groupId);
+        const groupData = await groupBean.toPublicJSON();
+        
+        res.json({
+            ok: true,
+            data: {
+                id: group.id,
+                name: group.name,
+                status_page_id: group.status_page_id,
+                public: group.public,
+                weight: group.weight,
+                monitorList: groupData.monitorList || []
+            }
         });
         
     } catch (error) {

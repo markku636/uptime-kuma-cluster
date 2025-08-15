@@ -297,6 +297,150 @@ class StatusPage extends BeanModel {
     }
 
     /**
+     * Get status page data with pagination support
+     * @param {StatusPage} statusPage Status page to get data for
+     * @param {object} options Pagination options
+     * @param {string|number} options.groupFilter Group ID to filter by ('all' or group ID)
+     * @param {number} options.page Page number (1-based)
+     * @param {number} options.limit Items per page
+     * @returns {object} Status page data with pagination info
+     */
+    static async getStatusPageDataPaginated(statusPage, options = {}) {
+        const { groupFilter, page = 1, limit = 10 } = options;
+        
+        const config = await statusPage.toPublicJSON();
+
+        // Incident (same as original)
+        let incident = await R.findOne("incident", " pin = 1 AND active = 1 AND status_page_id = ? ", [
+            statusPage.id,
+        ]);
+
+        if (incident) {
+            incident = incident.toPublicJSON();
+        }
+
+        let maintenanceList = await StatusPage.getMaintenanceList(statusPage.id);
+
+        // Get all groups for tab generation
+        const allGroups = await R.find("group", " public = 1 AND status_page_id = ? ORDER BY weight ", [
+            statusPage.id
+        ]);
+
+        // Generate group tabs with monitor counts
+        const groupTabs = [{ id: 'all', name: 'All', count: 0 }];
+        let totalMonitorCount = 0;
+
+        for (let groupBean of allGroups) {
+            // Count monitors in this group
+            const monitorCount = await R.count("monitor", " active = 1 AND id IN (SELECT monitor_id FROM monitor_group WHERE group_id = ?)", [
+                groupBean.id
+            ]);
+            
+            totalMonitorCount += monitorCount;
+            
+            groupTabs.push({
+                id: groupBean.id,
+                name: groupBean.name,
+                count: monitorCount
+            });
+        }
+
+        // Update "All" tab count
+        groupTabs[0].count = totalMonitorCount;
+
+        // Build public group list based on filter and pagination
+        const publicGroupList = [];
+        const showTags = !!statusPage.show_tags;
+
+        if (groupFilter && groupFilter !== 'all') {
+            // Filter for specific group - show only that group with its monitors paginated
+            const targetGroup = allGroups.find(group => group.id == groupFilter);
+            if (targetGroup) {
+                let monitorGroup = await targetGroup.toPublicJSON(showTags, config?.showCertificateExpiry);
+                
+                // Paginate monitors within the group
+                const allMonitors = monitorGroup.monitorList || [];
+                const totalMonitors = allMonitors.length;
+                const totalPages = Math.ceil(totalMonitors / limit);
+                const offset = (page - 1) * limit;
+                const paginatedMonitors = allMonitors.slice(offset, offset + limit);
+                
+                // Update the group's monitor list with paginated monitors
+                monitorGroup.monitorList = paginatedMonitors;
+                publicGroupList.push(monitorGroup);
+                
+                // Pagination info for this specific group
+                const pagination = {
+                    total: totalMonitors,
+                    currentPage: page,
+                    totalPages: totalPages,
+                    perPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1
+                };
+
+                return {
+                    config,
+                    incident,
+                    publicGroupList,
+                    maintenanceList,
+                    pagination,
+                    groupTabs
+                };
+            }
+        } else {
+            // Show all groups - paginate groups themselves
+            const totalGroups = allGroups.length;
+            const totalPages = Math.ceil(totalGroups / limit);
+            const offset = (page - 1) * limit;
+            const paginatedGroups = allGroups.slice(offset, offset + limit);
+
+            for (let groupBean of paginatedGroups) {
+                let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
+                publicGroupList.push(monitorGroup);
+            }
+
+            // Pagination info for groups
+            const pagination = {
+                total: totalMonitorCount,
+                currentPage: page,
+                totalPages: totalPages,
+                perPage: limit,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1
+            };
+
+            return {
+                config,
+                incident,
+                publicGroupList,
+                maintenanceList,
+                pagination,
+                groupTabs
+            };
+        }
+
+        // Fallback - empty response with pagination
+        const pagination = {
+            total: 0,
+            currentPage: page,
+            totalPages: 0,
+            perPage: limit,
+            hasNextPage: false,
+            hasPrevPage: false
+        };
+
+        return {
+            config,
+            incident,
+            publicGroupList: [],
+            maintenanceList,
+            pagination,
+            groupTabs
+        };
+    }
+
+    /**
      * Loads domain mapping from DB
      * Return object like this: { "test-uptime.kuma.pet": "default" }
      * @returns {Promise<void>}

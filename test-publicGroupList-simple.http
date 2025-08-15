@@ -1,0 +1,105 @@
+# 專門測試 publicGroupList 功能的 HTTP 請求
+
+# 基礎配置
+@baseUrl = http://127.0.0.1:9091
+@apiKey = uk1_dRoog_hjdvwvtQTCwXeaXj2jbrjA0OVOsLIkSwJn
+
+### 1. 先創建一個監控器用於測試
+POST {{baseUrl}}/api/v1/monitors
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "publicGroupList測試監控器",
+  "type": "http",
+  "url": "https://httpbin.org/status/200",
+  "interval": 60,
+  "active": true,
+  "method": "GET",
+  "description": "專門用於測試 publicGroupList 功能"
+}
+
+### 2. 創建帶有 publicGroupList 的狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "publicGroupList 測試頁面",
+  "slug": "publicgrouplist-test-page",
+  "description": "專門測試 publicGroupList 功能的狀態頁面",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": false,
+  "show_powered_by": true,
+  "show_certificate_expiry": false,
+  "publicGroupList": [
+    {
+      "name": "測試群組 A",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": true
+        }
+      ]
+    },
+    {
+      "name": "測試群組 B",
+      "monitorList": [
+        {
+          "id": 1,
+          "sendUrl": false,
+          "url": "https://custom-url.example.com"
+        }
+      ]
+    }
+  ]
+}
+
+### 3. 驗證狀態頁面是否包含群組（私有端點，需要 Auth）
+GET {{baseUrl}}/api/v1/status-pages/publicgrouplist-test-page?includeGroups=true
+Authorization: {{apiKey}}
+
+### 4. 驗證公開狀態頁面（無需 Auth）
+GET {{baseUrl}}/api/status-page/publicgrouplist-test-page
+
+### 5. 查詢所有狀態頁面
+GET {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+
+### 6. 測試不帶 publicGroupList 的狀態頁面創建（對照組）
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "無群組測試頁面",
+  "slug": "no-groups-test-page",
+  "description": "不包含群組的對照測試頁面",
+  "theme": "auto",
+  "published": true
+}
+
+### 7. 查詢對照組狀態頁面
+GET {{baseUrl}}/api/v1/status-pages/no-groups-test-page?includeGroups=true
+Authorization: {{apiKey}}
+
+### 8. 測試空的 publicGroupList
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "空群組列表測試",
+  "slug": "empty-groups-test-page",
+  "description": "包含空群組列表的測試頁面",
+  "theme": "auto",
+  "published": true,
+  "publicGroupList": []
+}
+
+### 9. 查詢空群組列表頁面
+GET {{baseUrl}}/api/v1/status-pages/empty-groups-test-page?includeGroups=true
+Authorization: {{apiKey}}
