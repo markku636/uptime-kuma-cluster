@@ -3,7 +3,7 @@
 ### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
 
 # 基礎 URL 配置
-@baseUrl = http://localhost:3001
+@baseUrl = http://192.168.99.88:9091
 @apiKey = uk1_fcy2lMrDQrjmhmk05dzgZxVE3qH_rrbF5LBukF1O
 
 ### 1. 測試 API 狀態
@@ -15,13 +15,6 @@ Authorization: {{apiKey}}
 
 ### 3. 獲取所有 monitors
 GET {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-
-### 4. 測試其他節點 (如果負載均衡器配置正確)
-GET http://localhost:3002/api/v1/monitors/1
-Authorization: {{apiKey}}
-
-GET http://localhost:3003/api/v1/monitors/1
 Authorization: {{apiKey}}
 
 ### 5. 通過負載均衡器訪問 (端口 80)
@@ -113,5 +106,128 @@ Content-Type: application/json
 
 {
   "active": true
+}
+
+### ========================================
+### Status Page REST API 測試
+### ========================================
+
+### 16. 獲取所有狀態頁面
+GET {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+
+### 17. 創建新的狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "我的狀態頁面",
+  "slug": "my-status-page",
+  "description": "這是一個通過 REST API 創建的狀態頁面",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "published": true,
+  "search_engine_index": true,
+  "show_tags": false,
+  "show_powered_by": true,
+  "show_certificate_expiry": false
+}
+
+### 18. 創建生產環境狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "生產環境服務狀態",
+  "slug": "production-services",
+  "description": "生產環境服務的狀態監控頁面",
+  "theme": "dark",
+  "autoRefreshInterval": 180,
+  "published": true,
+  "show_powered_by": false
+}
+
+### 19. 創建開發環境狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "開發環境服務狀態",
+  "slug": "dev-services",
+  "description": "開發環境服務的狀態監控頁面",
+  "theme": "light",
+  "autoRefreshInterval": 600,
+  "published": false
+}
+
+### 20. 根據 slug 獲取特定狀態頁面
+GET {{baseUrl}}/api/v1/status-pages/my-status-page
+Authorization: {{apiKey}}
+
+### 21. 更新狀態頁面
+PUT {{baseUrl}}/api/v1/status-pages/my-status-page
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "更新後的狀態頁面標題",
+  "description": "這是更新後的描述",
+  "theme": "light",
+  "autoRefreshInterval": 240
+}
+
+### 22. 更新狀態頁面發布狀態
+PUT {{baseUrl}}/api/v1/status-pages/dev-services
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "published": true,
+  "search_engine_index": true
+}
+
+### 23. 刪除狀態頁面
+DELETE {{baseUrl}}/api/v1/status-pages/my-status-page
+Authorization: {{apiKey}}
+
+### 24. 批量創建狀態頁面示例
+### 客戶門戶狀態頁面
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "客戶門戶狀態",
+  "slug": "customer-portal",
+  "description": "面向客戶的門戶服務狀態",
+  "theme": "auto",
+  "autoRefreshInterval": 300,
+  "show_powered_by": false,
+  "show_certificate_expiry": true
+}
+
+### 25. 測試狀態頁面 slug 驗證 (應該失敗)
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "無效的 Slug 測試",
+  "slug": "invalid--slug--test",
+  "description": "這個 slug 包含連續破折號，應該被拒絕"
+}
+
+### 26. 測試重複 slug (應該失敗)
+POST {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
+  "title": "重複的 Slug 測試",
+  "slug": "production-services",
+  "description": "這個 slug 已經存在，應該被拒絕"
 }
 

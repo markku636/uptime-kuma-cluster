@@ -3,6 +3,7 @@ const { R } = require("redbean-node");
 const jwt = require("jsonwebtoken");
 const Monitor = require("../model/monitor");
 const User = require("../model/user");
+const StatusPage = require("../model/status_page");
 const { Notification } = require("../notification");
 const { 
     sendHttpError, 
@@ -1099,6 +1100,514 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
             data: monitors
         });
     } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/status-pages:
+ *   get:
+ *     summary: Get all status pages
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all status pages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       slug:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       icon:
+ *                         type: string
+ *                       theme:
+ *                         type: string
+ *                       published:
+ *                         type: boolean
+ *                       created_date:
+ *                         type: string
+ *                       modified_date:
+ *                         type: string
+ */
+router.get("/api/v1/status-pages", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const statusPages = await R.findAll("status_page", " ORDER BY created_date DESC ");
+        const statusPageList = [];
+        
+        for (let statusPage of statusPages) {
+            statusPageList.push(statusPage.toJSON());
+        }
+        
+        res.json({
+            ok: true,
+            data: statusPageList
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/status-pages:
+ *   post:
+ *     summary: Create a new status page
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - slug
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Status page title
+ *                 example: "My Status Page"
+ *               slug:
+ *                 type: string
+ *                 description: Status page slug (URL-friendly identifier)
+ *                 example: "my-status-page"
+ *               description:
+ *                 type: string
+ *                 description: Status page description
+ *                 example: "Status page for my services"
+ *               theme:
+ *                 type: string
+ *                 description: Status page theme
+ *                 example: "auto"
+ *               autoRefreshInterval:
+ *                 type: integer
+ *                 description: Auto refresh interval in seconds
+ *                 example: 300
+ *     responses:
+ *       201:
+ *         description: Status page created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Status page created successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Created status page ID
+ *                     slug:
+ *                       type: string
+ *                       description: Status page slug
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/api/v1/status-pages", authenticateToken, [
+    body("title").notEmpty().withMessage("Title is required"),
+    body("slug").notEmpty().withMessage("Slug is required")
+], async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Validation failed",
+                errors: errors.array()
+            });
+        }
+        
+        let title = req.body.title?.trim();
+        let slug = req.body.slug?.trim();
+        
+        // Check empty
+        if (!title || !slug) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Please input all fields"
+            });
+        }
+        
+        // Make sure slug is string
+        if (typeof slug !== "string") {
+            return res.status(400).json({
+                ok: false,
+                msg: "Slug - Accept string only"
+            });
+        }
+        
+        // lower case only
+        slug = slug.toLowerCase();
+        
+        // Check slug format (a-z, 0-9, - only, no consecutive dashes)
+        if (!slug.match(/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/)) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Invalid slug format. Only a-z, 0-9, - allowed, no consecutive dashes"
+            });
+        }
+        
+        // Check if slug already exists
+        const existingStatusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        if (existingStatusPage) {
+            return res.status(400).json({
+                ok: false,
+                msg: "Slug already exists"
+            });
+        }
+        
+        let statusPage = R.dispense("status_page");
+        statusPage.slug = slug;
+        statusPage.title = title;
+        statusPage.description = req.body.description || "";
+        statusPage.theme = req.body.theme || "auto";
+        statusPage.icon = req.body.icon || "";
+        statusPage.autoRefreshInterval = req.body.autoRefreshInterval || 300;
+        statusPage.published = req.body.published !== undefined ? req.body.published : true;
+        statusPage.search_engine_index = req.body.search_engine_index !== undefined ? req.body.search_engine_index : true;
+        statusPage.show_tags = req.body.show_tags !== undefined ? req.body.show_tags : false;
+        statusPage.show_powered_by = req.body.show_powered_by !== undefined ? req.body.show_powered_by : true;
+        statusPage.show_certificate_expiry = req.body.show_certificate_expiry !== undefined ? req.body.show_certificate_expiry : false;
+        
+        await R.store(statusPage);
+        
+        res.status(201).json({
+            ok: true,
+            msg: "Status page created successfully",
+            data: {
+                id: statusPage.id,
+                slug: statusPage.slug,
+                title: statusPage.title
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/status-pages/{slug}:
+ *   get:
+ *     summary: Get status page by slug
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Status page slug
+ *     responses:
+ *       200:
+ *         description: Status page details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     slug:
+ *                       type: string
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     icon:
+ *                       type: string
+ *                     theme:
+ *                       type: string
+ *                     published:
+ *                       type: boolean
+ *                     created_date:
+ *                       type: string
+ *                     modified_date:
+ *                       type: string
+ *       404:
+ *         description: Status page not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const slug = req.params.slug.toLowerCase();
+        const statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        
+        if (!statusPage) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Status page not found"
+            });
+        }
+        
+        res.json({
+            ok: true,
+            data: statusPage.toJSON()
+        });
+    } catch (error) {
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/status-pages/{slug}:
+ *   put:
+ *     summary: Update status page by slug
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Status page slug
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Status page title
+ *               description:
+ *                 type: string
+ *                 description: Status page description
+ *               theme:
+ *                 type: string
+ *                 description: Status page theme
+ *               icon:
+ *                 type: string
+ *                 description: Status page icon
+ *               autoRefreshInterval:
+ *                 type: integer
+ *                 description: Auto refresh interval in seconds
+ *               published:
+ *                 type: boolean
+ *                 description: Whether the status page is published
+ *               search_engine_index:
+ *                 type: boolean
+ *                 description: Whether to allow search engine indexing
+ *               show_tags:
+ *                 type: boolean
+ *                 description: Whether to show tags
+ *               show_powered_by:
+ *                 type: boolean
+ *                 description: Whether to show powered by text
+ *               show_certificate_expiry:
+ *                 type: boolean
+ *                 description: Whether to show certificate expiry
+ *     responses:
+ *       200:
+ *         description: Status page updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Status page updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Updated status page ID
+ *                     slug:
+ *                       type: string
+ *                       description: Status page slug
+ *       404:
+ *         description: Status page not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const slug = req.params.slug.toLowerCase();
+        const statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        
+        if (!statusPage) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Status page not found"
+            });
+        }
+        
+        // Update fields if provided
+        if (req.body.title !== undefined) {
+            statusPage.title = req.body.title.trim();
+        }
+        if (req.body.description !== undefined) {
+            statusPage.description = req.body.description;
+        }
+        if (req.body.theme !== undefined) {
+            statusPage.theme = req.body.theme;
+        }
+        if (req.body.icon !== undefined) {
+            statusPage.icon = req.body.icon;
+        }
+        if (req.body.autoRefreshInterval !== undefined) {
+            statusPage.autoRefreshInterval = req.body.autoRefreshInterval;
+        }
+        if (req.body.published !== undefined) {
+            statusPage.published = req.body.published;
+        }
+        if (req.body.search_engine_index !== undefined) {
+            statusPage.search_engine_index = req.body.search_engine_index;
+        }
+        if (req.body.show_tags !== undefined) {
+            statusPage.show_tags = req.body.show_tags;
+        }
+        if (req.body.show_powered_by !== undefined) {
+            statusPage.show_powered_by = req.body.show_powered_by;
+        }
+        if (req.body.show_certificate_expiry !== undefined) {
+            statusPage.show_certificate_expiry = req.body.show_certificate_expiry;
+        }
+        
+        statusPage.modified_date = R.isoDateTime();
+        
+        await R.store(statusPage);
+        
+        res.json({
+            ok: true,
+            msg: "Status page updated successfully",
+            data: {
+                id: statusPage.id,
+                slug: statusPage.slug,
+                title: statusPage.title
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/status-pages/{slug}:
+ *   delete:
+ *     summary: Delete status page by slug
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Status page slug
+ *     responses:
+ *       200:
+ *         description: Status page deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 msg:
+ *                   type: string
+ *                   example: "Status page deleted successfully"
+ *       404:
+ *         description: Status page not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.delete("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
+    try {
+        allowAllOrigin(res);
+        
+        const slug = req.params.slug.toLowerCase();
+        const statusPageID = await StatusPage.slugToID(slug);
+        
+        if (!statusPageID) {
+            return res.status(404).json({
+                ok: false,
+                msg: "Status page not found"
+            });
+        }
+        
+        // Delete related records
+        await R.exec("DELETE FROM incident WHERE status_page_id = ? ", [statusPageID]);
+        await R.exec("DELETE FROM `group` WHERE status_page_id = ? ", [statusPageID]);
+        await R.exec("DELETE FROM status_page WHERE id = ? ", [statusPageID]);
+        
+        res.json({
+            ok: true,
+            msg: "Status page deleted successfully"
+        });
+        
+    } catch (error) {
+        console.error(error);
         sendHttpError(res, error.message);
     }
 });
