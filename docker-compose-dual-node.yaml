@@ -17,9 +17,7 @@ services:
       MYSQL_ROOT_PASSWORD: kuma_root_pass
       MYSQL_DATABASE: kuma
       MYSQL_USER: kuma
-      MYSQL_PASSWORD: kuma_pass
-    volumes:
-      - kuma-db:/var/lib/mysql
+      MYSQL_PASSWORD: kuma_pass    
     ports:
       - "9090:3306"
     restart: unless-stopped
