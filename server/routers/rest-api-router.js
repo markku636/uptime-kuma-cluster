@@ -1375,6 +1375,47 @@ router.post("/api/v1/status-pages", authenticateToken, [
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+/**
+ * @swagger
+ * /api/v1/status-pages/{slug}:
+ *   get:
+ *     summary: Get status page by slug
+ *     tags: [Status Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Status page slug
+ *       - in: query
+ *         name: includeGroups
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *         description: Whether to include public groups with monitors
+ *     responses:
+ *       200:
+ *         description: Status page retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/StatusPage'
+ *       404:
+ *         description: Status page not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
@@ -1389,9 +1430,30 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
             });
         }
         
+        // Get basic status page data
+        const basicData = statusPage.toJSON();
+        
+        // Get public groups with monitors if requested
+        let publicGroupList = [];
+        if (req.query.includeGroups === 'true') {
+            const list = await R.find("group", " public = 1 AND status_page_id = ? ORDER BY weight ", [
+                statusPage.id
+            ]);
+            
+            for (let groupBean of list) {
+                let monitorGroup = await groupBean.toPublicJSON(false, false);
+                publicGroupList.push(monitorGroup);
+            }
+        }
+        
+        const responseData = {
+            ...basicData,
+            ...(req.query.includeGroups === 'true' && { publicGroupList })
+        };
+        
         res.json({
             ok: true,
-            data: statusPage.toJSON()
+            data: responseData
         });
     } catch (error) {
         sendHttpError(res, error.message);
@@ -1450,6 +1512,36 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
  *               show_certificate_expiry:
  *                 type: boolean
  *                 description: Whether to show certificate expiry
+ *               publicGroupList:
+ *                 type: array
+ *                 description: List of public groups with monitors
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Group ID (optional for new groups)
+ *                     name:
+ *                       type: string
+ *                       description: Group name
+ *                     public:
+ *                       type: boolean
+ *                       description: Whether the group is public
+ *                     monitorList:
+ *                       type: array
+ *                       description: List of monitors in this group
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Monitor ID
+ *                           sendUrl:
+ *                             type: boolean
+ *                             description: Whether to send URL
+ *                           url:
+ *                             type: string
+ *                             description: Custom URL for the monitor
  *     responses:
  *       200:
  *         description: Status page updated successfully
@@ -1529,6 +1621,70 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
         statusPage.modified_date = R.isoDateTime();
         
         await R.store(statusPage);
+        
+        // Handle publicGroupList if provided
+        if (req.body.publicGroupList && Array.isArray(req.body.publicGroupList)) {
+            const groupIDList = [];
+            let groupOrder = 1;
+
+            for (let group of req.body.publicGroupList) {
+                let groupBean;
+                if (group.id) {
+                    groupBean = await R.findOne("group", " id = ? AND public = 1 AND status_page_id = ? ", [
+                        group.id,
+                        statusPage.id
+                    ]);
+                } else {
+                    groupBean = R.dispense("group");
+                }
+
+                groupBean.status_page_id = statusPage.id;
+                groupBean.name = group.name;
+                groupBean.public = true;
+                groupBean.weight = groupOrder++;
+
+                await R.store(groupBean);
+
+                // Clear existing monitor relationships for this group
+                await R.exec("DELETE FROM monitor_group WHERE group_id = ? ", [
+                    groupBean.id
+                ]);
+
+                let monitorOrder = 1;
+
+                for (let monitor of group.monitorList) {
+                    let relationBean = R.dispense("monitor_group");
+                    relationBean.weight = monitorOrder++;
+                    relationBean.group_id = groupBean.id;
+                    relationBean.monitor_id = monitor.id;
+
+                    if (monitor.sendUrl !== undefined) {
+                        relationBean.send_url = monitor.sendUrl;
+                    }
+
+                    if (monitor.url !== undefined) {
+                        relationBean.custom_url = monitor.url;
+                    }
+
+                    await R.store(relationBean);
+                }
+
+                groupIDList.push(groupBean.id);
+                group.id = groupBean.id;
+            }
+
+            // Delete groups that are not in the list
+            if (groupIDList.length === 0) {
+                await R.exec("DELETE FROM `group` WHERE status_page_id = ?", [ statusPage.id ]);
+            } else {
+                const slots = groupIDList.map(() => "?").join(",");
+                const data = [
+                    ...groupIDList,
+                    statusPage.id
+                ];
+                await R.exec(`DELETE FROM \`group\` WHERE id NOT IN (${slots}) AND status_page_id = ?`, data);
+            }
+        }
         
         res.json({
             ok: true,
