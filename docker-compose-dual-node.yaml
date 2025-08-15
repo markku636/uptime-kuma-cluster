@@ -43,7 +43,7 @@ services:
       - ./data/node1:/app/data
     ports:
       - "9091:3001"
-    environment:      
+    environment:
       - UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN=true
       - UPTIME_KUMA_DB_TYPE=mariadb
       - UPTIME_KUMA_DB_HOSTNAME=mariadb
@@ -54,9 +54,9 @@ services:
       - UPTIME_KUMA_NODE_ID=node1
       - UPTIME_KUMA_FORCE_MIGRATE=true
     depends_on:
-      mariadb:
-        condition: service_healthy
+      - mariadb
     restart: unless-stopped
+
     networks:
       - kuma-network
 
