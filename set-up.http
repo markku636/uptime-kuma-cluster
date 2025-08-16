@@ -4,7 +4,7 @@
 
 # 基礎 URL 配置
 @baseUrl = http://127.0.0.1:3001
-@apiKey = uk1_dRoog_hjdvwvtQTCwXeaXj2jbrjA0OVOsLIkSwJn
+@apiKey = uk1_fhNBcThusPsjocw0YmR144BJs-RQZV9weVr6NvZJ
 
 ### 1. 測試 API 狀態
 GET {{baseUrl}}/api/v1/status

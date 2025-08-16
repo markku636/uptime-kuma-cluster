@@ -329,26 +329,26 @@
                 </div>
 
                 <!-- Group Tabs (only show if not in edit mode and has groups) -->
-                <div v-show="!enableEditMode && groupTabs && groupTabs.length > 0 && !loading && initialLoadComplete" class="mb-3">
-                    <ul class="nav nav-tabs">
-                        <li v-for="tab in groupTabs" :key="tab.id" class="nav-item">
-                            <button 
-                                class="nav-link"
-                                :class="{ active: activeTab === tab.id }"
-                                @click="switchTab(tab.id)"
-                                data-testid="group-tab"
-                            >
-                                {{ tab.name }}
-                                <span class="badge bg-secondary ms-1">{{ tab.count }}</span>
-                            </button>
-                        </li>
-                    </ul>
+                <div v-show="!enableEditMode && groupTabs && groupTabs.length > 0 && !loading && initialLoadComplete" class="mb-4">
+                    <div class="kuma-tabs">
+                        <button 
+                            v-for="tab in groupTabs" 
+                            :key="tab.id" 
+                            class="kuma-tab"
+                            :class="{ active: activeTab === tab.id }"
+                            @click="switchTab(tab.id)"
+                            data-testid="group-tab"
+                        >
+                            <span class="tab-name">{{ tab.name }}</span>
+                            <span class="tab-count">{{ tab.count }}</span>
+                        </button>
+                    </div>
                 </div>
 
                 <PublicGroupList 
                     :edit-mode="enableEditMode" 
-                    :show-tags="config.showTags" 
-                    :show-certificate-expiry="config.showCertificateExpiry"
+                    :show-tags="config?.showTags || false" 
+                    :show-certificate-expiry="config?.showCertificateExpiry || false"
                     :active-tab="activeTab"
                     :page="page"
                     :per-page="perPage"
@@ -358,8 +358,8 @@
                 <div v-show="!enableEditMode && pagination && pagination.totalPages >= 1 && !loading && initialLoadComplete" class="d-flex justify-content-center mt-4">
                     <pagination
                         v-model="page"
-                        :records="pagination.total"
-                        :per-page="pagination.perPage"
+                        :records="pagination?.total || 0"
+                        :per-page="pagination?.perPage || perPage"
                         :options="paginationConfig"
                         data-testid="status-page-pagination"
                     />
@@ -396,44 +396,127 @@
 </template>
 
 <style scoped>
-/* Tab styling for better mobile experience */
+/* Uptime Kuma Style Tabs */
+.kuma-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0;
+    margin: 0;
+    border-bottom: 2px solid var(--bs-border-color);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bs-border-color) transparent;
+}
+
+.kuma-tabs::-webkit-scrollbar {
+    height: 4px;
+}
+
+.kuma-tabs::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.kuma-tabs::-webkit-scrollbar-thumb {
+    background-color: var(--bs-border-color);
+    border-radius: 2px;
+}
+
+.kuma-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--bs-body-color);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    position: relative;
+    min-width: fit-content;
+}
+
+.kuma-tab:hover {
+    background-color: var(--bs-light);
+    color: var(--bs-primary);
+    border-bottom-color: var(--bs-primary);
+}
+
+.kuma-tab.active {
+    color: var(--bs-primary);
+    border-bottom-color: var(--bs-primary);
+    background-color: rgba(var(--bs-primary-rgb), 0.05);
+}
+
+.kuma-tab .tab-name {
+    font-weight: 600;
+}
+
+.kuma-tab .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 2px 6px;
+    background-color: var(--bs-secondary);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 10px;
+    line-height: 1;
+}
+
+.kuma-tab.active .tab-count {
+    background-color: var(--bs-primary);
+}
+
+/* Dark theme support */
+.dark .kuma-tabs {
+    border-bottom-color: var(--bs-dark-border-color);
+}
+
+.dark .kuma-tab {
+    color: var(--bs-dark-font-color);
+}
+
+.dark .kuma-tab:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark .kuma-tab.active {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
-    .nav-tabs {
-        flex-wrap: wrap;
+    .kuma-tabs {
+        gap: 4px;
+        padding-bottom: 4px;
     }
     
-    .nav-tabs .nav-item {
-        flex: 1;
+    .kuma-tab {
+        padding: 10px 16px;
+        font-size: 13px;
         min-width: auto;
+        flex: 1;
+        justify-content: center;
     }
     
-    .nav-tabs .nav-link {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.875rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    
-    .nav-tabs .badge {
-        font-size: 0.75rem;
-        margin-left: 0.25rem;
+    .kuma-tab .tab-count {
+        min-width: 18px;
+        height: 18px;
+        font-size: 10px;
+        padding: 1px 5px;
     }
 }
 
 /* Pagination styling */
 .kuma_pagination {
     margin-top: 1rem;
-}
-
-/* Tab count badge styling */
-.nav-tabs .nav-link .badge {
-    margin-left: 0.5rem;
-}
-
-.nav-tabs .nav-link.active .badge {
-    background-color: rgba(255, 255, 255, 0.8) !important;
-    color: var(--bs-primary) !important;
 }
 </style>
 
@@ -561,14 +644,17 @@ export default {
         sortedMonitorList() {
             let result = [];
 
-            for (let id in this.$root.monitorList) {
-                if (this.$root.monitorList[id] && ! (id in this.$root.publicMonitorList)) {
-                    let monitor = this.$root.monitorList[id];
-                    result.push(monitor);
+            if (this.$root.monitorList && this.$root.publicMonitorList) {
+                for (let id in this.$root.monitorList) {
+                    if (this.$root.monitorList[id] && ! (id in this.$root.publicMonitorList)) {
+                        let monitor = this.$root.monitorList[id];
+                        result.push(monitor);
+                    }
                 }
             }
 
             result.sort((m1, m2) => {
+                if (!m1 || !m2) return 0;
 
                 if (m1.active !== m2.active) {
                     if (m1.active === 0) {
@@ -590,7 +676,10 @@ export default {
                     }
                 }
 
-                return m1.pathName.localeCompare(m2.pathName);
+                if (m1.pathName && m2.pathName) {
+                    return m1.pathName.localeCompare(m2.pathName);
+                }
+                return 0;
             });
 
             return result;
@@ -627,7 +716,7 @@ export default {
 
         overallStatus() {
 
-            if (Object.keys(this.$root.publicLastHeartbeatList).length === 0) {
+            if (!this.$root.publicLastHeartbeatList || Object.keys(this.$root.publicLastHeartbeatList).length === 0) {
                 return -1;
             }
 
@@ -636,13 +725,14 @@ export default {
 
             for (let id in this.$root.publicLastHeartbeatList) {
                 let beat = this.$root.publicLastHeartbeatList[id];
-
-                if (beat.status === MAINTENANCE) {
-                    return STATUS_PAGE_MAINTENANCE;
-                } else if (beat.status === UP) {
-                    hasUp = true;
-                } else {
-                    status = STATUS_PAGE_PARTIAL_DOWN;
+                if (beat && beat.status !== undefined) {
+                    if (beat.status === MAINTENANCE) {
+                        return STATUS_PAGE_MAINTENANCE;
+                    } else if (beat.status === UP) {
+                        hasUp = true;
+                    } else {
+                        status = STATUS_PAGE_PARTIAL_DOWN;
+                    }
                 }
             }
 
@@ -730,13 +820,14 @@ export default {
          */
         selectedMonitor(monitor) {
             if (monitor) {
-                if (this.$root.publicGroupList.length === 0) {
+                if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
                     this.addGroup();
                 }
 
                 const firstGroup = this.$root.publicGroupList[0];
-
-                firstGroup.monitorList.push(monitor);
+                if (firstGroup && firstGroup.monitorList) {
+                    firstGroup.monitorList.push(monitor);
+                }
                 this.selectedMonitor = null;
             }
         },
@@ -755,11 +846,13 @@ export default {
             let count = Object.keys(this.$root.monitorList).length;
 
             // Since publicGroupList is getting from public rest api, monitors' tags may not present if showTags = false
-            if (count > 0) {
+            if (count > 0 && this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
                 for (let group of this.$root.publicGroupList) {
-                    for (let monitor of group.monitorList) {
-                        if (monitor.tags === undefined && this.$root.monitorList[monitor.id]) {
-                            monitor.tags = this.$root.monitorList[monitor.id].tags;
+                    if (group && group.monitorList && Array.isArray(group.monitorList)) {
+                        for (let monitor of group.monitorList) {
+                            if (monitor && monitor.tags === undefined && this.$root.monitorList[monitor.id]) {
+                                monitor.tags = this.$root.monitorList[monitor.id].tags;
+                            }
                         }
                     }
                 }
@@ -802,10 +895,18 @@ export default {
         }
 
         this.getData().then((res) => {
-            this.config = res.data.config;
+            this.config = res.data?.config || {};
 
             if (!this.config.domainNameList) {
                 this.config.domainNameList = [];
+            }
+            
+            // Ensure config properties have default values
+            if (this.config.showTags === undefined) {
+                this.config.showTags = false;
+            }
+            if (this.config.showCertificateExpiry === undefined) {
+                this.config.showCertificateExpiry = false;
             }
 
             if (this.config.icon) {
@@ -816,13 +917,25 @@ export default {
             this.maintenanceList = res.data.maintenanceList;
             
             // Handle initial data load and tab generation
-            if (res.data.publicGroupList) {
+            if (res.data && res.data.publicGroupList) {
                 this.$root.publicGroupList = res.data.publicGroupList;
                 // Only generate tabs if we don't have pagination support in the initial response
                 if (!res.data.groupTabs && !res.data.pagination) {
                     this.generateTabsFromData();
                 }
                 this.loadedData = true;
+                
+                // Set default pagination if not available
+                if (!res.data.pagination) {
+                    this.pagination = {
+                        total: this.$root.publicGroupList.reduce((sum, group) => sum + (group.monitorList ? group.monitorList.length : 0), 0),
+                        currentPage: 1,
+                        totalPages: 1,
+                        perPage: this.perPage,
+                        hasNextPage: false,
+                        hasPrevPage: false
+                    };
+                }
             }
 
             // If not in edit mode, try to load paginated data
@@ -855,10 +968,10 @@ export default {
 
             this.updateUpdateTimer();
         }).catch( function (error) {
-            if (error.response.status === 404) {
+            if (error.response && error.response.status === 404) {
                 location.href = "/page-not-found";
             }
-            console.log(error);
+            console.log('Error loading status page data:', error);
         });
 
         this.updateHeartbeatList();
@@ -928,6 +1041,12 @@ export default {
                         this.groupTabs.unshift({ id: 'all', name: 'All', count: this.pagination?.total || 0 });
                     }
                     
+                    // Update "All" tab count if it exists
+                    const allTab = this.groupTabs.find(tab => tab.id === 'all');
+                    if (allTab && this.pagination) {
+                        allTab.count = this.pagination.total || 0;
+                    }
+                    
                     // Mark data as loaded
                     this.loadedData = true;
                     this.tabsInitialized = true;
@@ -937,7 +1056,7 @@ export default {
                         pagination: this.pagination,
                         enableEditMode: this.enableEditMode,
                         activeTab: this.activeTab,
-                        publicGroupListLength: this.$root.publicGroupList.length,
+                        publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
                         loading: this.loading
                     });
                 }
@@ -947,13 +1066,25 @@ export default {
                 console.error('Error loading status page data:', error);
                 // Fallback to original method
                 return this.getData().then((res) => {
-                    if (res.data.publicGroupList) {
+                    if (res.data && res.data.publicGroupList) {
                         this.$root.publicGroupList = res.data.publicGroupList;
                         // Generate tabs from existing data
                         this.generateTabsFromData();
                         this.loadedData = true;
                         this.tabsInitialized = true;
                         this.initialLoadComplete = true;
+                        
+                        // Set default pagination if not available
+                        if (!this.pagination) {
+                            this.pagination = {
+                                total: this.$root.publicGroupList.reduce((sum, group) => sum + (group.monitorList ? group.monitorList.length : 0), 0),
+                                currentPage: 1,
+                                totalPages: 1,
+                                perPage: this.perPage,
+                                hasNextPage: false,
+                                hasPrevPage: false
+                            };
+                        }
                     }
                 });
             }
@@ -967,19 +1098,26 @@ export default {
             this.groupTabs = [{ id: 'all', name: 'All', count: 0 }];
             let totalCount = 0;
 
-            for (const group of this.$root.publicGroupList) {
-                const monitorCount = group.monitorList ? group.monitorList.length : 0;
-                totalCount += monitorCount;
-                
-                this.groupTabs.push({
-                    id: group.id,
-                    name: group.name,
-                    count: monitorCount
-                });
+            // 檢查 publicGroupList 是否存在且為陣列
+            if (this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
+                for (const group of this.$root.publicGroupList) {
+                    if (group && group.monitorList) {
+                        const monitorCount = group.monitorList.length || 0;
+                        totalCount += monitorCount;
+                        
+                        this.groupTabs.push({
+                            id: group.id,
+                            name: group.name,
+                            count: monitorCount
+                        });
+                    }
+                }
             }
 
             // Update "All" tab count
-            this.groupTabs[0].count = totalCount;
+            if (this.groupTabs && this.groupTabs.length > 0) {
+                this.groupTabs[0].count = totalCount;
+            }
             
             // Mark data as loaded
             this.loadedData = true;
@@ -988,7 +1126,7 @@ export default {
             console.log('Generated tabs from data:', {
                 tabs: this.groupTabs,
                 activeTab: this.activeTab,
-                totalGroups: this.$root.publicGroupList.length
+                totalGroups: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0
             });
         },
 
@@ -1030,28 +1168,34 @@ export default {
             // If editMode, it will use the data from websocket.
             if (! this.editMode) {
                 axios.get("/api/status-page/heartbeat/" + this.slug).then((res) => {
-                    const { heartbeatList, uptimeList } = res.data;
+                    if (res.data) {
+                        const { heartbeatList, uptimeList } = res.data;
 
-                    this.$root.heartbeatList = heartbeatList;
-                    this.$root.uptimeList = uptimeList;
+                        this.$root.heartbeatList = heartbeatList || {};
+                        this.$root.uptimeList = uptimeList || {};
 
-                    const heartbeatIds = Object.keys(heartbeatList);
-                    const downMonitors = heartbeatIds.reduce((downMonitorsAmount, currentId) => {
-                        const monitorHeartbeats = heartbeatList[currentId];
-                        const lastHeartbeat = monitorHeartbeats.at(-1);
+                        if (heartbeatList && typeof heartbeatList === 'object') {
+                            const heartbeatIds = Object.keys(heartbeatList);
+                            const downMonitors = heartbeatIds.reduce((downMonitorsAmount, currentId) => {
+                                const monitorHeartbeats = heartbeatList[currentId];
+                                if (monitorHeartbeats && Array.isArray(monitorHeartbeats)) {
+                                    const lastHeartbeat = monitorHeartbeats.at(-1);
+                                    if (lastHeartbeat && lastHeartbeat.status === 0) {
+                                        return downMonitorsAmount + 1;
+                                    }
+                                }
+                                return downMonitorsAmount;
+                            }, 0);
 
-                        if (lastHeartbeat) {
-                            return lastHeartbeat.status === 0 ? downMonitorsAmount + 1 : downMonitorsAmount;
-                        } else {
-                            return downMonitorsAmount;
+                            favicon.badge(downMonitors);
                         }
-                    }, 0);
 
-                    favicon.badge(downMonitors);
-
-                    this.loadedData = true;
-                    this.lastUpdateTime = dayjs();
-                    this.updateUpdateTimer();
+                        this.loadedData = true;
+                        this.lastUpdateTime = dayjs();
+                        this.updateUpdateTimer();
+                    }
+                }).catch((error) => {
+                    console.error('Error updating heartbeat list:', error);
                 });
             }
         },
@@ -1064,11 +1208,15 @@ export default {
             clearInterval(this.updateCountdown);
 
             this.updateCountdown = setInterval(() => {
-                const countdown = dayjs.duration(this.lastUpdateTime.add(this.config.autoRefreshInterval, "seconds").add(10, "seconds").diff(dayjs()));
-                if (countdown.as("seconds") < 0) {
-                    clearInterval(this.updateCountdown);
+                if (this.lastUpdateTime && this.config && this.config.autoRefreshInterval) {
+                    const countdown = dayjs.duration(this.lastUpdateTime.add(this.config.autoRefreshInterval, "seconds").add(10, "seconds").diff(dayjs()));
+                    if (countdown.as("seconds") < 0) {
+                        clearInterval(this.updateCountdown);
+                    } else {
+                        this.updateCountdownText = countdown.format("mm:ss");
+                    }
                 } else {
-                    this.updateCountdownText = countdown.format("mm:ss");
+                    clearInterval(this.updateCountdown);
                 }
             }, 1000);
         },
@@ -1079,12 +1227,17 @@ export default {
          */
         edit() {
             if (this.hasToken) {
-                this.$root.initSocketIO(true);
-                this.enableEditMode = true;
-                this.clickedEditButton = true;
+                try {
+                    this.$root.initSocketIO(true);
+                    this.enableEditMode = true;
+                    this.clickedEditButton = true;
 
-                // Try to fix #1658
-                this.loadedData = true;
+                    // Try to fix #1658
+                    this.loadedData = true;
+                } catch (error) {
+                    console.error('Error enabling edit mode:', error);
+                    this.$root.toastError("Failed to enable edit mode");
+                }
             }
         },
 
@@ -1095,31 +1248,44 @@ export default {
         save() {
             this.loading = true;
             let startTime = new Date();
-            this.config.slug = this.config.slug.trim().toLowerCase();
+            
+            if (this.config && this.config.slug) {
+                this.config.slug = this.config.slug.trim().toLowerCase();
+            }
 
-            this.$root.getSocket().emit("saveStatusPage", this.slug, this.config, this.imgDataUrl, this.$root.publicGroupList, (res) => {
-                if (res.ok) {
-                    this.enableEditMode = false;
-                    this.$root.publicGroupList = res.publicGroupList;
+            try {
+                this.$root.getSocket().emit("saveStatusPage", this.slug, this.config, this.imgDataUrl, this.$root.publicGroupList || [], (res) => {
+                    if (res && res.ok) {
+                        this.enableEditMode = false;
+                        this.$root.publicGroupList = res.publicGroupList || [];
 
-                    // Add some delay, so that the side menu animation would be better
-                    let endTime = new Date();
-                    let time = 100 - (endTime - startTime) / 1000;
+                        // Add some delay, so that the side menu animation would be better
+                        let endTime = new Date();
+                        let time = 100 - (endTime - startTime) / 1000;
 
-                    if (time < 0) {
-                        time = 0;
-                    }
+                        if (time < 0) {
+                            time = 0;
+                        }
 
-                    setTimeout(() => {
+                        setTimeout(() => {
+                            this.loading = false;
+                            location.href = "/status/" + this.config.slug;
+                        }, time);
+
+                    } else {
                         this.loading = false;
-                        location.href = "/status/" + this.config.slug;
-                    }, time);
-
-                } else {
-                    this.loading = false;
-                    toast.error(res.msg);
-                }
-            });
+                        if (res && res.msg) {
+                            toast.error(res.msg);
+                        } else {
+                            toast.error("Save failed");
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error saving status page:', error);
+                this.loading = false;
+                toast.error("Save failed");
+            }
         },
 
         /**
@@ -1136,11 +1302,11 @@ export default {
          */
         deleteStatusPage() {
             this.$root.getSocket().emit("deleteStatusPage", this.slug, (res) => {
-                if (res.ok) {
+                if (res && res.ok) {
                     this.enableEditMode = false;
                     location.href = "/manage-status-page";
                 } else {
-                    this.$root.toastError(res.msg);
+                    this.$root.toastError(res && res.msg ? res.msg : "Delete failed");
                 }
             });
         },
@@ -1151,6 +1317,9 @@ export default {
          * @returns {string} Monitor label
          */
         monitorSelectorLabel(monitor) {
+            if (!monitor || !monitor.name) {
+                return "Unknown Monitor";
+            }
             return `${monitor.name}`;
         },
 
@@ -1161,10 +1330,14 @@ export default {
         addGroup() {
             let groupName = this.$t("Untitled Group");
 
-            if (this.$root.publicGroupList.length === 0) {
+            if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
                 groupName = this.$t("Services");
             }
 
+            if (!this.$root.publicGroupList) {
+                this.$root.publicGroupList = [];
+            }
+            
             this.$root.publicGroupList.unshift({
                 name: groupName,
                 monitorList: [],
@@ -1176,6 +1349,9 @@ export default {
          * @returns {void}
          */
         addDomainField() {
+            if (!this.config.domainNameList) {
+                this.config.domainNameList = [];
+            }
             this.config.domainNameList.push("");
         },
 
@@ -1184,7 +1360,11 @@ export default {
          * @returns {void}
          */
         discard() {
-            location.href = "/status/" + this.slug;
+            if (this.slug) {
+                location.href = "/status/" + this.slug;
+            } else {
+                location.href = "/manage-status-page";
+            }
         },
 
         /**
@@ -1193,7 +1373,9 @@ export default {
          * @returns {void}
          */
         cropSuccess(imgDataUrl) {
-            this.imgDataUrl = imgDataUrl;
+            if (imgDataUrl) {
+                this.imgDataUrl = imgDataUrl;
+            }
         },
 
         /**
@@ -1201,7 +1383,7 @@ export default {
          * @returns {void}
          */
         showImageCropUploadMethod() {
-            if (this.editMode) {
+            if (this.editMode && this.enableEditMode) {
                 this.showImageCropUpload = true;
             }
         },
@@ -1214,7 +1396,7 @@ export default {
             this.enableEditIncidentMode = true;
 
             if (this.incident) {
-                this.previousIncident = this.incident;
+                this.previousIncident = Object.assign({}, this.incident);
             }
 
             this.incident = {
@@ -1229,7 +1411,7 @@ export default {
          * @returns {void}
          */
         postIncident() {
-            if (this.incident.title === "" || this.incident.content === "") {
+            if (!this.incident || this.incident.title === "" || this.incident.content === "") {
                 this.$root.toastError("Please input title and content");
                 return;
             }
@@ -1238,7 +1420,7 @@ export default {
 
                 if (res.ok) {
                     this.enableEditIncidentMode = false;
-                    this.incident = res.incident;
+                    this.incident = res.incident || {};
                 } else {
                     this.$root.toastError(res.msg);
                 }
@@ -1253,7 +1435,9 @@ export default {
          */
         editIncident() {
             this.enableEditIncidentMode = true;
-            this.previousIncident = Object.assign({}, this.incident);
+            if (this.incident) {
+                this.previousIncident = Object.assign({}, this.incident);
+            }
         },
 
         /**
