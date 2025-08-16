@@ -326,8 +326,8 @@ class StatusPage extends BeanModel {
             statusPage.id
         ]);
 
-        // Generate group tabs with monitor counts
-        const groupTabs = [{ id: 'all', name: 'All', count: 0 }];
+        // Generate group tabs with monitor counts (no more "All" tab)
+        const groupTabs = [];
         let totalMonitorCount = 0;
 
         for (let groupBean of allGroups) {
@@ -345,14 +345,11 @@ class StatusPage extends BeanModel {
             });
         }
 
-        // Update "All" tab count
-        groupTabs[0].count = totalMonitorCount;
-
         // Build public group list based on filter and pagination
         const publicGroupList = [];
         const showTags = !!statusPage.show_tags;
 
-        if (groupFilter && groupFilter !== 'all') {
+        if (groupFilter) {
             // Filter for specific group - show only that group with its monitors paginated
             const targetGroup = allGroups.find(group => group.id == groupFilter);
             if (targetGroup) {
@@ -369,7 +366,43 @@ class StatusPage extends BeanModel {
                 monitorGroup.monitorList = paginatedMonitors;
                 publicGroupList.push(monitorGroup);
                 
-                // Pagination info for this specific group
+                // IMPORTANT: For specific group tab, pagination.total should be the total monitors in that group
+                // But we also need to ensure the frontend knows this is a filtered view
+                const pagination = {
+                    total: totalMonitors, // This is correct - shows monitors in this group
+                    currentPage: page,
+                    totalPages: totalPages,
+                    perPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1
+                };
+
+                return {
+                    config,
+                    incident,
+                    publicGroupList,
+                    maintenanceList,
+                    pagination,
+                    groupTabs
+                };
+            }
+        } else {
+            // No group filter - show first group by default
+            if (allGroups.length > 0) {
+                const firstGroup = allGroups[0];
+                let monitorGroup = await firstGroup.toPublicJSON(showTags, config?.showCertificateExpiry);
+                
+                // Paginate monitors within the first group
+                const allMonitors = monitorGroup.monitorList || [];
+                const totalMonitors = allMonitors.length;
+                const totalPages = Math.ceil(totalMonitors / limit);
+                const offset = (page - 1) * limit;
+                const paginatedMonitors = allMonitors.slice(offset, offset + limit);
+                
+                // Update the group's monitor list with paginated monitors
+                monitorGroup.monitorList = paginatedMonitors;
+                publicGroupList.push(monitorGroup);
+                
                 const pagination = {
                     total: totalMonitors,
                     currentPage: page,
@@ -388,36 +421,6 @@ class StatusPage extends BeanModel {
                     groupTabs
                 };
             }
-        } else {
-            // Show all groups - paginate groups themselves
-            const totalGroups = allGroups.length;
-            const totalPages = Math.ceil(totalGroups / limit);
-            const offset = (page - 1) * limit;
-            const paginatedGroups = allGroups.slice(offset, offset + limit);
-
-            for (let groupBean of paginatedGroups) {
-                let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
-                publicGroupList.push(monitorGroup);
-            }
-
-            // Pagination info for groups
-            const pagination = {
-                total: totalMonitorCount,
-                currentPage: page,
-                totalPages: totalPages,
-                perPage: limit,
-                hasNextPage: page < totalPages,
-                hasPrevPage: page > 1
-            };
-
-            return {
-                config,
-                incident,
-                publicGroupList,
-                maintenanceList,
-                pagination,
-                groupTabs
-            };
         }
 
         // Fallback - empty response with pagination

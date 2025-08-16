@@ -317,56 +317,41 @@ export default {
              return "#DC2626";
          },
          
-                   /**
-           * Get paginated monitors for a specific group
-           * @param {object} group Group object
-           * @returns {Array} Paginated monitor list
-           */
-          getPaginatedMonitorsForGroup(group) {
-              if (!group || !group.element || !group.element.monitorList) {
-                  console.log(`getPaginatedMonitorsForGroup: Invalid group or no monitorList`);
-                  return [];
-              }
-              
-              // In edit mode, show all monitors
-              if (this.editMode) {
-                  console.log(`Group ${group.element.name}: Edit mode, showing all ${group.element.monitorList.length} monitors`);
-                  return group.element.monitorList;
-              }
-              
-              console.log(`getPaginatedMonitorsForGroup called for group: ${group.element.name}, activeTab: ${this.activeTab}, page: ${this.page}`);
-              
-              // For specific group tab, apply pagination directly to that group's monitors
-              if (this.activeTab == group.element.id) {
-                  const startIndex = (this.page - 1) * this.perPage;
-                  const endIndex = startIndex + this.perPage;
-                  const monitorsToShow = group.element.monitorList.slice(startIndex, endIndex);
-                  
-                  console.log(`Group ${group.element.name}: specific tab, page ${this.page}, perPage ${this.perPage}, showing ${monitorsToShow.length}/${group.element.monitorList.length} monitors`);
-                  return monitorsToShow;
-              }
-              
-              // For 'all' tab or when showing other groups, we need to handle pagination across all groups
-              if (this.activeTab === 'all') {
-                  // Calculate which monitors from this group should be shown on the current page
-                  const monitorsBeforeThisGroup = this.getMonitorsBeforeGroup(group);
-                  const groupStartIndex = Math.max(0, (this.page - 1) * this.perPage - monitorsBeforeThisGroup);
-                  const groupEndIndex = Math.min(group.element.monitorList.length, this.page * this.perPage - monitorsBeforeThisGroup);
-                  
-                  if (groupStartIndex < groupEndIndex && groupStartIndex >= 0) {
-                      const monitorsToShow = group.element.monitorList.slice(groupStartIndex, groupEndIndex);
-                      console.log(`Group ${group.element.name}: all tab, page ${this.page}, showing ${monitorsToShow.length}/${group.element.monitorList.length} monitors (start: ${groupStartIndex}, end: ${groupEndIndex})`);
-                      return monitorsToShow;
-                  } else {
-                      console.log(`Group ${group.element.name}: all tab, page ${this.page}, no monitors to show for this page`);
-                      return [];
-                  }
-              }
-              
-              // For other cases, return empty array
-              console.log(`Group ${group.element.name}: no matching tab logic, returning empty array`);
-              return [];
-          },
+                           /**
+         * Get paginated monitors for a specific group
+         * @param {object} group Group object
+         * @returns {Array} Paginated monitor list
+         */
+        getPaginatedMonitorsForGroup(group) {
+            if (!group || !group.element || !group.element.monitorList) {
+                console.log(`getPaginatedMonitorsForGroup: Invalid group or no monitorList`);
+                return [];
+            }
+            
+            // In edit mode, show all monitors
+            if (this.editMode) {
+                console.log(`Group ${group.element.name}: Edit mode, showing all ${group.element.monitorList.length} monitors`);
+                return group.element.monitorList;
+            }
+            
+            console.log(`getPaginatedMonitorsForGroup called for group: ${group.element.name}, activeTab: ${this.activeTab}, page: ${this.page}`);
+            
+            // ALWAYS use paginated data from parent component - this is the source of truth
+            if (this.paginatedData && this.paginatedData.length > 0) {
+                // Filter monitors that belong to this group from the paginated data
+                const groupMonitors = this.paginatedData.filter(monitor => {
+                    // Check if monitor belongs to this group by ID
+                    return group.element.monitorList.some(gm => gm.id === monitor.id);
+                });
+                
+                console.log(`Group ${group.element.name}: using parent paginated data, showing ${groupMonitors.length} monitors from paginatedData (${this.paginatedData.length} total)`);
+                return groupMonitors;
+            }
+            
+            // If no paginated data from parent, return empty array
+            console.log(`Group ${group.element.name}: No paginated data from parent, returning empty array`);
+            return [];
+        },
          
                    /**
            * Calculate how many monitors come before this group in the flattened list

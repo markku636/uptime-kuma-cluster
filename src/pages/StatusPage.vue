@@ -358,12 +358,16 @@
                                  <!-- Pagination (only show if not in edit mode and has data) -->
                  <div v-show="!enableEditMode && !loading && initialLoadComplete && totalRecords > 0" class="d-flex justify-content-center mt-4">
                      <pagination
+                         v-if="showPagination"
+                         ref="pagination"
+                         :key="`pagination-${activeTab}-${perPage}`"
                          v-model="page"
                          :records="totalRecords"
                          :per-page="perPage"
                          :options="paginationConfig"
                          data-testid="status-page-pagination"
                      />
+
                  </div>
             </div>
 
@@ -384,34 +388,7 @@
                      <div data-testid="update-countdown-text">{{ $tc("statusPageRefreshIn", [ updateCountdownText]) }}</div>
                  </div>
                  
-                 <!-- Debug Information -->
-                 <div v-if="!enableEditMode" class="debug-info mt-4 p-3 bg-light border rounded">
-                     <h6 class="text-muted mb-2">🔍 Debug Information</h6>
-                     <div class="row">
-                         <div class="col-md-6">
-                             <strong>分頁狀態:</strong><br>
-                             • 當前頁碼: {{ page }}<br>
-                             • 每頁記錄數: {{ perPage }}<br>
-                             • 總記錄數: {{ totalRecords }}<br>
-                             • 有數據顯示: {{ hasDataToShow }}
-                         </div>
-                         <div class="col-md-6">
-                             <strong>Tab 狀態:</strong><br>
-                             • 當前 Tab: {{ activeTab }}<br>
-                             • Tab 數量: {{ groupTabs ? groupTabs.length : 0 }}<br>
-                             • 數據已載入: {{ loadedData }}<br>
-                             • 初始載入完成: {{ initialLoadComplete }}
-                         </div>
-                     </div>
-                     <div class="row mt-2">
-                         <div class="col-12">
-                             <strong>數據狀態:</strong><br>
-                             • 群組數量: {{ $root.publicGroupList ? $root.publicGroupList.length : 0 }}<br>
-                             • 載入中: {{ loading }}<br>
-                             • 編輯模式: {{ enableEditMode }}
-                         </div>
-                     </div>
-                 </div>
+
             </footer>
         </div>
 
@@ -651,6 +628,7 @@ export default {
             groupTabs: [],
             tabsInitialized: false,
             initialLoadComplete: false,
+            showPagination: true,
             paginationConfig: {
                 hideCount: false,
                 chunksNavigation: "scroll",
@@ -659,7 +637,9 @@ export default {
                 firstText: "«",
                 lastText: "»",
                 prevText: "‹",
-                nextText: "›"
+                nextText: "›",
+                chunk: 10,  // Explicitly set chunk to match perPage
+                format: true
             }
         };
     },
@@ -823,94 +803,112 @@ export default {
             return this.$root.datetime(this.lastUpdateTime);
         },
         
-                 /**
-          * Calculate total records for pagination
-          * @returns {number} Total number of records
-          */
-         totalRecords() {
-             console.log('totalRecords calculation triggered:', {
-                 hasPublicGroupList: !!this.$root.publicGroupList,
-                 publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
-                 activeTab: this.activeTab,
-                 page: this.page
-             });
+                         /**
+         * Calculate total records for pagination
+         * @returns {number} Total number of records
+         */
+        totalRecords() {
+            console.log('totalRecords calculation triggered:', {
+                hasPublicGroupList: !!this.$root.publicGroupList,
+                publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
+                activeTab: this.activeTab,
+                page: this.page,
+                hasPagination: !!this.pagination,
+                paginationTotal: this.pagination ? this.pagination.total : null
+            });
+            
+            // If we have backend pagination data, use it as the source of truth
+            if (this.pagination && this.pagination.total !== undefined) {
+                // Find the corresponding group tab count
+                if (this.groupTabs && this.groupTabs.length > 0) {
+                    const groupTab = this.groupTabs.find(tab => tab.id == this.activeTab);
+                    if (groupTab && groupTab.count !== undefined) {
+                        console.log(`Using backend data for group ${groupTab.name}: ${groupTab.count} total monitors`);
+                        return groupTab.count;
+                    }
+                }
+            }
+            
+            // Fallback to frontend calculation if no backend pagination data
+            if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
+                console.log('totalRecords: No publicGroupList available, fallback calculation');
+                return 0;
+            }
+            
+            let total = 0;
+            
+            // For specific group tab, return count of monitors in that group only
+            const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+            if (selectedGroup && selectedGroup.monitorList) {
+                total = selectedGroup.monitorList.length;
+                console.log(`Group ${selectedGroup.name} tab total (fallback): ${total} monitors`);
+            } else {
+                console.log(`No group found for tab ID: ${this.activeTab} (fallback)`);
+                total = 0;
+            }
              
-             if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
-                 console.log('totalRecords: No publicGroupList available');
-                 return 0;
-             }
-             
-             let total = 0;
-             
-             if (this.activeTab === 'all') {
-                 // Count all monitors across all groups
-                 total = this.$root.publicGroupList.reduce((sum, group) => {
-                     const groupCount = group.monitorList ? group.monitorList.length : 0;
-                     console.log(`Group ${group.name}: ${groupCount} monitors`);
-                     return sum + groupCount;
-                 }, 0);
-             } else {
-                 // Count monitors in the selected group
-                 const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
-                 if (selectedGroup && selectedGroup.monitorList) {
-                     total = selectedGroup.monitorList.length;
-                     console.log(`Selected group ${selectedGroup.name}: ${total} monitors`);
-                 } else {
-                     console.log(`No monitors found for group ID: ${this.activeTab}, available groups:`, this.$root.publicGroupList.map(g => ({ id: g.id, name: g.name })));
-                 }
-             }
-             
-             console.log(`totalRecords calculated: ${total} for tab: ${this.activeTab}`);
-             return total;
-         },
+            console.log(`totalRecords calculated (fallback): ${total} for tab: ${this.activeTab}`);
+            return total;
+        },
         
         /**
          * Get paginated data for current tab and page
          * @returns {Array} Paginated data
          */
         paginatedData() {
+            console.log(`paginatedData calculation: activeTab=${this.activeTab}, page=${this.page}, perPage=${this.perPage}`);
+            
+            // If we have backend pagination data, use it directly
+            if (this.pagination && this.pagination.total > 0) {
+                console.log(`Using backend pagination data: total=${this.pagination.total}, currentPage=${this.pagination.currentPage}, perPage=${this.pagination.perPage}`);
+                
+                // Check if the current page matches the backend data
+                if (this.page === this.pagination.currentPage) {
+                    // Use the data from publicGroupList (which contains the current page data)
+                    if (this.$root.publicGroupList && this.$root.publicGroupList.length > 0) {
+                        let allMonitors = [];
+                        
+                        // For specific group tab, get monitors from that group
+                        const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+                        if (selectedGroup && selectedGroup.monitorList) {
+                            allMonitors = selectedGroup.monitorList;
+                            console.log(`Backend pagination: page ${this.page}, monitors: ${allMonitors.length}`);
+                            return allMonitors;
+                        }
+                    }
+                } else {
+                    console.log(`Page mismatch: frontend page=${this.page}, backend page=${this.pagination.currentPage}`);
+                    // Page mismatch - need to reload data
+                    this.loadStatusPageData();
+                    return [];
+                }
+            }
+            
+            // Fallback to frontend pagination if no backend data
             if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
-                console.log('paginatedData: No publicGroupList available');
+                console.log('paginatedData: No publicGroupList available, fallback calculation');
                 return [];
             }
             
+            console.log(`Using frontend pagination fallback`);
+            
             // For pagination, we need to handle the data differently based on the tab
-            if (this.activeTab === 'all') {
-                // For "All" tab, we need to flatten all groups and apply pagination
-                let allMonitors = [];
-                this.$root.publicGroupList.forEach(group => {
-                    if (group.monitorList && Array.isArray(group.monitorList)) {
-                        // Add group info to each monitor for display
-                        const monitorsWithGroup = group.monitorList.map(monitor => ({
-                            ...monitor,
-                            _groupName: group.name,
-                            _groupId: group.id
-                        }));
-                        allMonitors = allMonitors.concat(monitorsWithGroup);
-                    }
-                });
-                
-                // Apply pagination
+            // No more "All" tab logic
+            // For specific group tab, get monitors from that group and apply pagination
+            const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+            if (selectedGroup && selectedGroup.monitorList) {
+                const allMonitors = selectedGroup.monitorList;
                 const startIndex = (this.page - 1) * this.perPage;
                 const endIndex = startIndex + this.perPage;
                 
-                console.log(`All tab pagination: page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
+                console.log(`Group ${selectedGroup.name} pagination (fallback): page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
                 
-                return allMonitors.slice(startIndex, endIndex);
+                const paginatedMonitors = allMonitors.slice(startIndex, endIndex);
+                console.log(`Group ${selectedGroup.name} result (fallback): ${paginatedMonitors.length} monitors for page ${this.page}`);
+                
+                return paginatedMonitors;
             } else {
-                // For specific group tab, get monitors from that group and apply pagination
-                const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
-                if (selectedGroup && selectedGroup.monitorList) {
-                    const allMonitors = selectedGroup.monitorList;
-                    const startIndex = (this.page - 1) * this.perPage;
-                    const endIndex = startIndex + this.perPage;
-                    
-                    console.log(`Group ${selectedGroup.name} pagination: page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
-                    
-                    return allMonitors.slice(startIndex, endIndex);
-                } else {
-                    console.log(`No group found for tab ID: ${this.activeTab}`);
-                }
+                console.log(`No group found for tab ID: ${this.activeTab}, available groups:`, this.$root.publicGroupList.map(g => ({ id: g.id, name: g.name })));
             }
             
             return [];
@@ -1063,32 +1061,9 @@ export default {
             this.incident = res.data.incident;
             this.maintenanceList = res.data.maintenanceList;
             
-            // Handle initial data load and tab generation
-            if (res.data && res.data.publicGroupList) {
-                this.$root.publicGroupList = res.data.publicGroupList;
-                // Only generate tabs if we don't have pagination support in the initial response
-                if (!res.data.groupTabs && !res.data.pagination) {
-                    this.generateTabsFromData();
-                }
-                this.loadedData = true;
-                
-                // Set default pagination if not available
-                if (!res.data.pagination) {
-                    this.pagination = {
-                        total: this.$root.publicGroupList.reduce((sum, group) => sum + (group.monitorList ? group.monitorList.length : 0), 0),
-                        currentPage: 1,
-                        totalPages: 1,
-                        perPage: this.perPage,
-                        hasNextPage: false,
-                        hasPrevPage: false
-                    };
-                }
-            }
-
-            // If not in edit mode, try to load paginated data
+            // If not in edit mode, load paginated data directly
             if (!this.enableEditMode) {
-                // Ensure we start with 'all' tab to show all groups after update
-                this.activeTab = 'all';
+                // Start with the first group tab instead of 'all'
                 this.page = 1;
                 
                 this.loadStatusPageData().then(() => {
@@ -1097,6 +1072,15 @@ export default {
                     this.$nextTick(() => {
                         // Add a small delay to prevent flash during initial load
                         setTimeout(() => {
+                            // Auto-select the first group tab if available
+                            if (this.groupTabs && this.groupTabs.length > 0) {
+                                const firstGroupTab = this.groupTabs.find(tab => tab.id !== 'all');
+                                if (firstGroupTab) {
+                                    this.activeTab = firstGroupTab.id;
+                                    console.log(`Auto-selected first group tab: ${firstGroupTab.name} (ID: ${firstGroupTab.id})`);
+                                }
+                            }
+                            
                             this.initialLoadComplete = true;
                             console.log('Initial load complete, showing tabs and pagination');
                             console.log('Pagination should be visible now:', {
@@ -1110,6 +1094,13 @@ export default {
                     });
                 });
             } else {
+                // In edit mode, load all data without pagination
+                if (res.data && res.data.publicGroupList) {
+                    this.$root.publicGroupList = res.data.publicGroupList;
+                    this.generateTabsFromData();
+                    this.loadedData = true;
+                }
+                
                 this.loading = false;
                 this.$nextTick(() => {
                     setTimeout(() => {
@@ -1209,10 +1200,7 @@ export default {
                         this.generateTabsFromData();
                     }
                     
-                    // Ensure "All" tab exists and is first
-                    if (this.groupTabs && !this.groupTabs.find(tab => tab.id === 'all')) {
-                        this.groupTabs.unshift({ id: 'all', name: 'All', count: 0 });
-                    }
+                    // No need to ensure "All" tab exists anymore
                     
                     // Update tab counts based on actual data
                     this.updateTabCounts();
@@ -1257,7 +1245,7 @@ export default {
          * @returns {void}
          */
         generateTabsFromData() {
-            this.groupTabs = [{ id: 'all', name: 'All', count: 0 }];
+            this.groupTabs = [];
 
             // 檢查 publicGroupList 是否存在且為陣列
             if (this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
@@ -1295,50 +1283,86 @@ export default {
                 return;
             }
             
-            // Update "All" tab count
-            const allTab = this.groupTabs.find(tab => tab.id === 'all');
-            if (allTab) {
-                allTab.count = this.totalRecords;
-            }
+            // No need to update "All" tab count anymore
             
-            // Update individual group tab counts
+            // Update individual group tab counts only if not set by backend
             if (this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
                 for (const group of this.$root.publicGroupList) {
                     if (group && group.id) {
                         const groupTab = this.groupTabs.find(tab => tab.id === group.id);
                         if (groupTab) {
-                            groupTab.count = group.monitorList ? group.monitorList.length : 0;
+                            if (groupTab.count === undefined) {
+                                const groupCount = group.monitorList ? group.monitorList.length : 0;
+                                groupTab.count = groupCount;
+                                console.log(`updateTabCounts - Group ${group.name} tab count set to: ${groupCount} (frontend fallback)`);
+                            } else {
+                                console.log(`updateTabCounts - Group ${group.name} tab count already set by backend: ${groupTab.count}`);
+                            }
                         }
                     }
                 }
             }
             
-            console.log('Updated tab counts:', this.groupTabs);
+            console.log('Final tab counts after update:', this.groupTabs);
         },
 
-                 /**
-          * Switch to a different tab
-          * @param {string|number} tabId - Tab ID to switch to
-          * @returns {void}
-          */
-         switchTab(tabId) {
-             if (this.activeTab === tabId) {
-                 return; // Don't reload if clicking the same tab
-             }
-             
-             console.log('Switching tab from', this.activeTab, 'to', tabId);
-             this.activeTab = tabId;
-             this.page = 1; // Reset to first page when switching tabs
-             
-             // Force recalculation of totalRecords and paginatedData
-             this.$forceUpdate();
-             
-             // Reload data for the new tab
-             this.loadStatusPageData().then(() => {
-                 console.log('Tab switch complete for tab:', tabId);
-                 console.log('After tab switch - totalRecords:', this.totalRecords, 'paginatedData length:', this.paginatedData.length);
-             });
-         },
+                         /**
+         * Switch to a different tab
+         * @param {string|number} tabId - Tab ID to switch to
+         * @returns {void}
+         */
+        switchTab(tabId) {
+            if (this.activeTab === tabId) {
+                return; // Don't reload if clicking the same tab
+            }
+            
+            console.log('Switching tab from', this.activeTab, 'to', tabId);
+            console.log('Before tab switch - perPage:', this.perPage, 'page:', this.page);
+            
+            this.activeTab = tabId;
+            this.page = 1; // Reset to first page when switching tabs
+            
+            // Ensure perPage is maintained
+            const currentPerPage = this.perPage;
+            console.log('Maintaining perPage value:', currentPerPage);
+            
+            // Temporarily hide pagination to force re-render
+            this.showPagination = false;
+            
+            // Force recalculation of totalRecords and paginatedData
+            this.$forceUpdate();
+            
+            // Reload data for the new tab
+            this.loadStatusPageData().then(() => {
+                console.log('Tab switch complete for tab:', tabId);
+                console.log('After tab switch - totalRecords:', this.totalRecords, 'paginatedData length:', this.paginatedData.length);
+                console.log('After tab switch - perPage:', this.perPage, 'page:', this.page);
+                
+                            // Force pagination component to update
+            this.$nextTick(() => {
+                if (this.$refs.pagination) {
+                    this.$refs.pagination.$forceUpdate();
+                    console.log('Pagination component force updated');
+                }
+                
+                // Ensure perPage is still correct
+                if (this.perPage !== currentPerPage) {
+                    console.warn('perPage was changed during tab switch, restoring:', currentPerPage);
+                    this.perPage = currentPerPage;
+                }
+                
+                // Force another update to ensure pagination is fully recalculated
+                this.$nextTick(() => {
+                    this.$forceUpdate();
+                    console.log('Component fully updated after tab switch');
+                    
+                    // Re-show pagination component
+                    this.showPagination = true;
+                    console.log('Pagination component re-shown');
+                });
+            });
+            });
+        },
 
         /**
          * Provide syntax highlighting for CSS
@@ -1431,10 +1455,79 @@ export default {
 
                     // Try to fix #1658
                     this.loadedData = true;
+                    
+                    // Load all groups and monitors for edit mode
+                    this.loadAllDataForEditMode();
                 } catch (error) {
                     console.error('Error enabling edit mode:', error);
                     this.$root.toastError("Failed to enable edit mode");
                 }
+            }
+        },
+
+        /**
+         * Load all groups and monitors for edit mode (no pagination)
+         * @returns {Promise<void>}
+         */
+        async loadAllDataForEditMode() {
+            try {
+                console.log('Loading all data for edit mode...');
+                
+                // Build API parameters for loading all data
+                const params = new URLSearchParams();
+                // No group filter - get all groups
+                // No page/limit - get all monitors
+                // Add interval time for data freshness
+                if (this.config.autoRefreshInterval) {
+                    params.append('interval', this.config.autoRefreshInterval);
+                }
+
+                const url = `/api/status-page/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                console.log('Loading all data from:', url);
+                
+                const response = await axios.get(url);
+                
+                if (response.data) {
+                    // Update publicGroupList with all data
+                    if (response.data.publicGroupList && response.data.publicGroupList.length > 0) {
+                        this.$root.publicGroupList = response.data.publicGroupList;
+                        console.log('Updated publicGroupList for edit mode:', this.$root.publicGroupList.length, 'groups');
+                        
+                        // Log total monitors across all groups
+                        const totalMonitors = this.$root.publicGroupList.reduce((sum, group) => {
+                            return sum + (group.monitorList ? group.monitorList.length : 0);
+                        }, 0);
+                        console.log('Total monitors loaded for edit mode:', totalMonitors);
+                    }
+                    
+                    // Set group tabs for edit mode
+                    if (response.data.groupTabs && response.data.groupTabs.length > 0) {
+                        this.groupTabs = response.data.groupTabs;
+                        console.log('Updated groupTabs for edit mode:', this.groupTabs);
+                    } else {
+                        // Generate tabs from loaded data
+                        this.generateTabsFromData();
+                    }
+                    
+                    // Mark data as loaded
+                    this.loadedData = true;
+                    this.tabsInitialized = true;
+                    
+                    console.log('Edit mode data loading complete');
+                }
+                
+                return Promise.resolve();
+            } catch (error) {
+                console.error('Error loading all data for edit mode:', error);
+                // Fallback to original method
+                return this.getData().then((res) => {
+                    if (res.data && res.data.publicGroupList) {
+                        this.$root.publicGroupList = res.data.publicGroupList;
+                        this.generateTabsFromData();
+                        this.loadedData = true;
+                        this.tabsInitialized = true;
+                    }
+                });
             }
         },
 
@@ -1457,8 +1550,7 @@ export default {
                         // Update with complete data from server, not filtered by tab
                         this.$root.publicGroupList = res.publicGroupList || [];
                         
-                        // Reset tab to 'all' to show all groups after update
-                        this.activeTab = 'all';
+                        // Reset to first group tab instead of 'all'
                         this.page = 1;
 
                         // Add some delay, so that the side menu animation would be better
