@@ -17,20 +17,20 @@
                 </h2>
 
                 <div class="shadow-box monitor-list mt-4 position-relative">
-                    <div v-if="group.element.monitorList.length === 0" class="text-center no-monitor-msg">
-                        {{ $t("No Monitors") }}
-                    </div>
+                                         <div v-if="getPaginatedMonitorsForGroup(group).length === 0" class="text-center no-monitor-msg">
+                         {{ $t("No Monitors") }}
+                     </div>
 
                     <!-- Monitor List -->
                     <!-- animation is not working, no idea why -->
-                    <Draggable
-                        v-model="group.element.monitorList"
-                        class="monitor-list"
-                        group="same-group"
-                        :disabled="!editMode"
-                        :animation="100"
-                        item-key="id"
-                    >
+                                         <Draggable
+                         :list="getPaginatedMonitorsForGroup(group)"
+                         class="monitor-list"
+                         group="same-group"
+                         :disabled="!editMode"
+                         :animation="100"
+                         item-key="id"
+                     >
                         <template #item="monitor">
                             <div class="item" data-testid="monitor">
                                 <div class="row">
@@ -121,16 +121,21 @@ export default {
             type: [String, Number],
             default: 'all'
         },
-        /** Current page for pagination */
-        page: {
-            type: Number,
-            default: 1
-        },
-        /** Items per page */
-        perPage: {
-            type: Number,
-            default: 10
-        }
+                 /** Current page for pagination */
+         page: {
+             type: Number,
+             default: 1
+         },
+         /** Items per page */
+         perPage: {
+             type: Number,
+             default: 10
+         },
+         /** Paginated data from parent */
+         paginatedData: {
+             type: Array,
+             default: () => []
+         }
     },
     data() {
         return {
@@ -164,13 +169,48 @@ export default {
             // Filter to show only the selected group
             const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
             if (selectedGroup) {
-                console.log(`Filtering to show group: ${selectedGroup.name} (ID: ${selectedGroup.id})`);
+                console.log(`Filtering to show group: ${selectedGroup.name} (ID: ${selectedGroup.id}) with ${selectedGroup.monitorList ? selectedGroup.monitorList.length : 0} monitors`);
                 return [selectedGroup];
             }
             
             console.log(`No group found for activeTab: ${this.activeTab}`);
             // If no matching group found, return empty array
             return [];
+        },
+        
+        /**
+         * Get paginated monitor list for the current group
+         * @returns {Array} Paginated monitor list
+         */
+        paginatedMonitorList() {
+            if (!this.$root.publicGroupList) {
+                return [];
+            }
+            
+            let allMonitors = [];
+            
+            if (this.activeTab === 'all') {
+                // Collect all monitors from all groups
+                this.$root.publicGroupList.forEach(group => {
+                    if (group.monitorList && Array.isArray(group.monitorList)) {
+                        allMonitors = allMonitors.concat(group.monitorList);
+                    }
+                });
+            } else {
+                // Get monitors from selected group
+                const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+                if (selectedGroup && selectedGroup.monitorList) {
+                    allMonitors = selectedGroup.monitorList;
+                }
+            }
+            
+            // Apply pagination
+            const startIndex = (this.page - 1) * this.perPage;
+            const endIndex = startIndex + this.perPage;
+            
+            console.log(`Pagination: page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
+            
+            return allMonitors.slice(startIndex, endIndex);
         },
         
         /**
@@ -265,17 +305,94 @@ export default {
             }
         },
 
-        /**
-         * Returns certificate expiry color based on days remaining
-         * @param {object} monitor Monitor to show expiry for
-         * @returns {string} Color for certificate expiry
-         */
-        certExpiryColor(monitor) {
-            if (monitor?.element?.validCert && monitor.element.certExpiryDaysRemaining > 7) {
-                return "#059669";
-            }
-            return "#DC2626";
-        },
+                 /**
+          * Returns certificate expiry color based on days remaining
+          * @param {object} monitor Monitor to show expiry for
+          * @returns {string} Color for certificate expiry
+          */
+         certExpiryColor(monitor) {
+             if (monitor?.element?.validCert && monitor.element.certExpiryDaysRemaining > 7) {
+                 return "#059669";
+             }
+             return "#DC2626";
+         },
+         
+                   /**
+           * Get paginated monitors for a specific group
+           * @param {object} group Group object
+           * @returns {Array} Paginated monitor list
+           */
+          getPaginatedMonitorsForGroup(group) {
+              if (!group || !group.element || !group.element.monitorList) {
+                  console.log(`getPaginatedMonitorsForGroup: Invalid group or no monitorList`);
+                  return [];
+              }
+              
+              // In edit mode, show all monitors
+              if (this.editMode) {
+                  console.log(`Group ${group.element.name}: Edit mode, showing all ${group.element.monitorList.length} monitors`);
+                  return group.element.monitorList;
+              }
+              
+              console.log(`getPaginatedMonitorsForGroup called for group: ${group.element.name}, activeTab: ${this.activeTab}, page: ${this.page}`);
+              
+              // For specific group tab, apply pagination directly to that group's monitors
+              if (this.activeTab == group.element.id) {
+                  const startIndex = (this.page - 1) * this.perPage;
+                  const endIndex = startIndex + this.perPage;
+                  const monitorsToShow = group.element.monitorList.slice(startIndex, endIndex);
+                  
+                  console.log(`Group ${group.element.name}: specific tab, page ${this.page}, perPage ${this.perPage}, showing ${monitorsToShow.length}/${group.element.monitorList.length} monitors`);
+                  return monitorsToShow;
+              }
+              
+              // For 'all' tab or when showing other groups, we need to handle pagination across all groups
+              if (this.activeTab === 'all') {
+                  // Calculate which monitors from this group should be shown on the current page
+                  const monitorsBeforeThisGroup = this.getMonitorsBeforeGroup(group);
+                  const groupStartIndex = Math.max(0, (this.page - 1) * this.perPage - monitorsBeforeThisGroup);
+                  const groupEndIndex = Math.min(group.element.monitorList.length, this.page * this.perPage - monitorsBeforeThisGroup);
+                  
+                  if (groupStartIndex < groupEndIndex && groupStartIndex >= 0) {
+                      const monitorsToShow = group.element.monitorList.slice(groupStartIndex, groupEndIndex);
+                      console.log(`Group ${group.element.name}: all tab, page ${this.page}, showing ${monitorsToShow.length}/${group.element.monitorList.length} monitors (start: ${groupStartIndex}, end: ${groupEndIndex})`);
+                      return monitorsToShow;
+                  } else {
+                      console.log(`Group ${group.element.name}: all tab, page ${this.page}, no monitors to show for this page`);
+                      return [];
+                  }
+              }
+              
+              // For other cases, return empty array
+              console.log(`Group ${group.element.name}: no matching tab logic, returning empty array`);
+              return [];
+          },
+         
+                   /**
+           * Calculate how many monitors come before this group in the flattened list
+           * @param {object} group Group object
+           * @returns {number} Number of monitors before this group
+           */
+          getMonitorsBeforeGroup(group) {
+              if (!this.$root.publicGroupList) {
+                  console.log('getMonitorsBeforeGroup: No publicGroupList available');
+                  return 0;
+              }
+              
+              let monitorCount = 0;
+              for (const g of this.$root.publicGroupList) {
+                  if (g.id === group.element.id) {
+                      break;
+                  }
+                  if (g.monitorList && Array.isArray(g.monitorList)) {
+                      monitorCount += g.monitorList.length;
+                      console.log(`Group ${g.name}: adding ${g.monitorList.length} monitors, total before: ${monitorCount}`);
+                  }
+              }
+              
+              console.log(`Total monitors before group ${group.element.name}: ${monitorCount}`);
+              return monitorCount;
+          },
     }
 };
 </script>

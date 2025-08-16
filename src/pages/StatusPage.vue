@@ -345,25 +345,26 @@
                     </div>
                 </div>
 
-                <PublicGroupList 
-                    :edit-mode="enableEditMode" 
-                    :show-tags="config?.showTags || false" 
-                    :show-certificate-expiry="config?.showCertificateExpiry || false"
-                    :active-tab="activeTab"
-                    :page="page"
-                    :per-page="perPage"
-                />
+                                 <PublicGroupList 
+                     :edit-mode="enableEditMode" 
+                     :show-tags="config?.showTags || false" 
+                     :show-certificate-expiry="config?.showCertificateExpiry || false"
+                     :active-tab="activeTab"
+                     :page="page"
+                     :per-page="perPage"
+                     :paginated-data="paginatedData"
+                 />
 
-                <!-- Pagination (only show if not in edit mode and has pagination data) -->
-                <div v-show="!enableEditMode && pagination && pagination.totalPages >= 1 && !loading && initialLoadComplete" class="d-flex justify-content-center mt-4">
-                    <pagination
-                        v-model="page"
-                        :records="pagination?.total || 0"
-                        :per-page="pagination?.perPage || perPage"
-                        :options="paginationConfig"
-                        data-testid="status-page-pagination"
-                    />
-                </div>
+                                 <!-- Pagination (only show if not in edit mode and has data) -->
+                 <div v-show="!enableEditMode && !loading && initialLoadComplete && totalRecords > 0" class="d-flex justify-content-center mt-4">
+                     <pagination
+                         v-model="page"
+                         :records="totalRecords"
+                         :per-page="perPage"
+                         :options="paginationConfig"
+                         data-testid="status-page-pagination"
+                     />
+                 </div>
             </div>
 
             <footer class="mt-5 mb-4">
@@ -378,10 +379,39 @@
                     {{ $t("Powered by") }} <a target="_blank" rel="noopener noreferrer" href="https://github.com/louislam/uptime-kuma">{{ $t("Uptime Kuma" ) }}</a>
                 </p>
 
-                <div class="refresh-info mb-2">
-                    <div>{{ $t("Last Updated") }}:  {{ lastUpdateTimeDisplay }}</div>
-                    <div data-testid="update-countdown-text">{{ $tc("statusPageRefreshIn", [ updateCountdownText]) }}</div>
-                </div>
+                                 <div class="refresh-info mb-2">
+                     <div>{{ $t("Last Updated") }}:  {{ lastUpdateTimeDisplay }}</div>
+                     <div data-testid="update-countdown-text">{{ $tc("statusPageRefreshIn", [ updateCountdownText]) }}</div>
+                 </div>
+                 
+                 <!-- Debug Information -->
+                 <div v-if="!enableEditMode" class="debug-info mt-4 p-3 bg-light border rounded">
+                     <h6 class="text-muted mb-2">🔍 Debug Information</h6>
+                     <div class="row">
+                         <div class="col-md-6">
+                             <strong>分頁狀態:</strong><br>
+                             • 當前頁碼: {{ page }}<br>
+                             • 每頁記錄數: {{ perPage }}<br>
+                             • 總記錄數: {{ totalRecords }}<br>
+                             • 有數據顯示: {{ hasDataToShow }}
+                         </div>
+                         <div class="col-md-6">
+                             <strong>Tab 狀態:</strong><br>
+                             • 當前 Tab: {{ activeTab }}<br>
+                             • Tab 數量: {{ groupTabs ? groupTabs.length : 0 }}<br>
+                             • 數據已載入: {{ loadedData }}<br>
+                             • 初始載入完成: {{ initialLoadComplete }}
+                         </div>
+                     </div>
+                     <div class="row mt-2">
+                         <div class="col-12">
+                             <strong>數據狀態:</strong><br>
+                             • 群組數量: {{ $root.publicGroupList ? $root.publicGroupList.length : 0 }}<br>
+                             • 載入中: {{ loading }}<br>
+                             • 編輯模式: {{ enableEditMode }}
+                         </div>
+                     </div>
+                 </div>
             </footer>
         </div>
 
@@ -622,8 +652,14 @@ export default {
             tabsInitialized: false,
             initialLoadComplete: false,
             paginationConfig: {
-                hideCount: true,
+                hideCount: false,
                 chunksNavigation: "scroll",
+                maxItems: 5,
+                edgeNavigation: true,
+                firstText: "«",
+                lastText: "»",
+                prevText: "‹",
+                nextText: "›"
             }
         };
     },
@@ -785,6 +821,114 @@ export default {
 
         lastUpdateTimeDisplay() {
             return this.$root.datetime(this.lastUpdateTime);
+        },
+        
+                 /**
+          * Calculate total records for pagination
+          * @returns {number} Total number of records
+          */
+         totalRecords() {
+             console.log('totalRecords calculation triggered:', {
+                 hasPublicGroupList: !!this.$root.publicGroupList,
+                 publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
+                 activeTab: this.activeTab,
+                 page: this.page
+             });
+             
+             if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
+                 console.log('totalRecords: No publicGroupList available');
+                 return 0;
+             }
+             
+             let total = 0;
+             
+             if (this.activeTab === 'all') {
+                 // Count all monitors across all groups
+                 total = this.$root.publicGroupList.reduce((sum, group) => {
+                     const groupCount = group.monitorList ? group.monitorList.length : 0;
+                     console.log(`Group ${group.name}: ${groupCount} monitors`);
+                     return sum + groupCount;
+                 }, 0);
+             } else {
+                 // Count monitors in the selected group
+                 const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+                 if (selectedGroup && selectedGroup.monitorList) {
+                     total = selectedGroup.monitorList.length;
+                     console.log(`Selected group ${selectedGroup.name}: ${total} monitors`);
+                 } else {
+                     console.log(`No monitors found for group ID: ${this.activeTab}, available groups:`, this.$root.publicGroupList.map(g => ({ id: g.id, name: g.name })));
+                 }
+             }
+             
+             console.log(`totalRecords calculated: ${total} for tab: ${this.activeTab}`);
+             return total;
+         },
+        
+        /**
+         * Get paginated data for current tab and page
+         * @returns {Array} Paginated data
+         */
+        paginatedData() {
+            if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
+                console.log('paginatedData: No publicGroupList available');
+                return [];
+            }
+            
+            // For pagination, we need to handle the data differently based on the tab
+            if (this.activeTab === 'all') {
+                // For "All" tab, we need to flatten all groups and apply pagination
+                let allMonitors = [];
+                this.$root.publicGroupList.forEach(group => {
+                    if (group.monitorList && Array.isArray(group.monitorList)) {
+                        // Add group info to each monitor for display
+                        const monitorsWithGroup = group.monitorList.map(monitor => ({
+                            ...monitor,
+                            _groupName: group.name,
+                            _groupId: group.id
+                        }));
+                        allMonitors = allMonitors.concat(monitorsWithGroup);
+                    }
+                });
+                
+                // Apply pagination
+                const startIndex = (this.page - 1) * this.perPage;
+                const endIndex = startIndex + this.perPage;
+                
+                console.log(`All tab pagination: page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
+                
+                return allMonitors.slice(startIndex, endIndex);
+            } else {
+                // For specific group tab, get monitors from that group and apply pagination
+                const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+                if (selectedGroup && selectedGroup.monitorList) {
+                    const allMonitors = selectedGroup.monitorList;
+                    const startIndex = (this.page - 1) * this.perPage;
+                    const endIndex = startIndex + this.perPage;
+                    
+                    console.log(`Group ${selectedGroup.name} pagination: page ${this.page}, perPage ${this.perPage}, startIndex ${startIndex}, endIndex ${endIndex}, total ${allMonitors.length}`);
+                    
+                    return allMonitors.slice(startIndex, endIndex);
+                } else {
+                    console.log(`No group found for tab ID: ${this.activeTab}`);
+                }
+            }
+            
+            return [];
+        },
+        
+        /**
+         * Check if there's data to show (for pagination display)
+         * @returns {boolean} Whether there's data to show
+         */
+        hasDataToShow() {
+            const hasData = this.totalRecords > 0;
+            console.log('hasDataToShow check:', {
+                totalRecords: this.totalRecords,
+                hasData: hasData,
+                publicGroupList: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
+                activeTab: this.activeTab
+            });
+            return hasData;
         }
     },
     watch: {
@@ -859,15 +1003,18 @@ export default {
             }
         },
 
-        /**
-         * Watch for page changes to reload data
-         * @returns {void}
-         */
-        page() {
-            if (!this.enableEditMode) {
-                this.loadStatusPageData();
-            }
-        }
+                 /**
+          * Watch for page changes to reload data
+          * @returns {void}
+          */
+         page() {
+             if (!this.enableEditMode) {
+                 console.log('Page changed to:', this.page, 'reloading data...');
+                 // Force recalculation of paginatedData
+                 this.$forceUpdate();
+                 this.loadStatusPageData();
+             }
+         }
 
     },
     async created() {
@@ -940,6 +1087,10 @@ export default {
 
             // If not in edit mode, try to load paginated data
             if (!this.enableEditMode) {
+                // Ensure we start with 'all' tab to show all groups after update
+                this.activeTab = 'all';
+                this.page = 1;
+                
                 this.loadStatusPageData().then(() => {
                     this.loading = false;
                     // Use nextTick to ensure DOM is updated before showing tabs
@@ -947,7 +1098,14 @@ export default {
                         // Add a small delay to prevent flash during initial load
                         setTimeout(() => {
                             this.initialLoadComplete = true;
-                            console.log('Initial load complete, showing tabs');
+                            console.log('Initial load complete, showing tabs and pagination');
+                            console.log('Pagination should be visible now:', {
+                                enableEditMode: this.enableEditMode,
+                                loading: this.loading,
+                                initialLoadComplete: this.initialLoadComplete,
+                                totalRecords: this.totalRecords,
+                                activeTab: this.activeTab
+                            });
                         }, 100);
                     });
                 });
@@ -1009,23 +1167,38 @@ export default {
             }
 
             try {
+                // Build API parameters for backend pagination
                 const params = new URLSearchParams();
                 if (this.activeTab !== 'all') {
                     params.append('group', this.activeTab);
                 }
                 params.append('page', this.page);
                 params.append('limit', this.perPage);
+                
+                // Add interval time for data freshness
+                if (this.config.autoRefreshInterval) {
+                    params.append('interval', this.config.autoRefreshInterval);
+                }
 
                 const url = `/api/status-page/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                console.log('Loading paginated data from:', url);
+                
                 const response = await axios.get(url);
                 
                 if (response.data) {
-                    // Update existing data structure
-                    this.$root.publicGroupList = response.data.publicGroupList || [];
+                    // Only update publicGroupList if the response contains it
+                    // This prevents clearing existing data when backend doesn't return it
+                    if (response.data.publicGroupList && response.data.publicGroupList.length > 0) {
+                        this.$root.publicGroupList = response.data.publicGroupList;
+                        console.log('Updated publicGroupList from API response:', this.$root.publicGroupList.length, 'groups');
+                    } else {
+                        console.log('API response does not contain publicGroupList, keeping existing data');
+                    }
                     
-                    // Set pagination data if available
+                    // Set pagination data if available from backend
                     if (response.data.pagination) {
                         this.pagination = response.data.pagination;
+                        console.log('Backend pagination data:', this.pagination);
                     }
                     
                     // Set group tabs if available, otherwise keep existing ones
@@ -1038,14 +1211,11 @@ export default {
                     
                     // Ensure "All" tab exists and is first
                     if (this.groupTabs && !this.groupTabs.find(tab => tab.id === 'all')) {
-                        this.groupTabs.unshift({ id: 'all', name: 'All', count: this.pagination?.total || 0 });
+                        this.groupTabs.unshift({ id: 'all', name: 'All', count: 0 });
                     }
                     
-                    // Update "All" tab count if it exists
-                    const allTab = this.groupTabs.find(tab => tab.id === 'all');
-                    if (allTab && this.pagination) {
-                        allTab.count = this.pagination.total || 0;
-                    }
+                    // Update tab counts based on actual data
+                    this.updateTabCounts();
                     
                     // Mark data as loaded
                     this.loadedData = true;
@@ -1054,7 +1224,8 @@ export default {
                     console.log('Loaded paginated data:', {
                         groupTabs: this.groupTabs,
                         pagination: this.pagination,
-                        enableEditMode: this.enableEditMode,
+                        totalRecords: this.totalRecords,
+                        currentPage: this.page,
                         activeTab: this.activeTab,
                         publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
                         loading: this.loading
@@ -1074,17 +1245,8 @@ export default {
                         this.tabsInitialized = true;
                         this.initialLoadComplete = true;
                         
-                        // Set default pagination if not available
-                        if (!this.pagination) {
-                            this.pagination = {
-                                total: this.$root.publicGroupList.reduce((sum, group) => sum + (group.monitorList ? group.monitorList.length : 0), 0),
-                                currentPage: 1,
-                                totalPages: 1,
-                                perPage: this.perPage,
-                                hasNextPage: false,
-                                hasPrevPage: false
-                            };
-                        }
+                        // Update tab counts
+                        this.updateTabCounts();
                     }
                 });
             }
@@ -1096,28 +1258,22 @@ export default {
          */
         generateTabsFromData() {
             this.groupTabs = [{ id: 'all', name: 'All', count: 0 }];
-            let totalCount = 0;
 
             // 檢查 publicGroupList 是否存在且為陣列
             if (this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
                 for (const group of this.$root.publicGroupList) {
                     if (group && group.monitorList) {
-                        const monitorCount = group.monitorList.length || 0;
-                        totalCount += monitorCount;
-                        
                         this.groupTabs.push({
                             id: group.id,
                             name: group.name,
-                            count: monitorCount
+                            count: group.monitorList.length || 0
                         });
                     }
                 }
             }
 
-            // Update "All" tab count
-            if (this.groupTabs && this.groupTabs.length > 0) {
-                this.groupTabs[0].count = totalCount;
-            }
+            // Update tab counts based on actual data
+            this.updateTabCounts();
             
             // Mark data as loaded
             this.loadedData = true;
@@ -1129,27 +1285,60 @@ export default {
                 totalGroups: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0
             });
         },
-
+        
         /**
-         * Switch to a different tab
-         * @param {string|number} tabId - Tab ID to switch to
+         * Update tab counts based on current data
          * @returns {void}
          */
-        switchTab(tabId) {
-            if (this.activeTab === tabId) {
-                return; // Don't reload if clicking the same tab
+        updateTabCounts() {
+            if (!this.groupTabs || this.groupTabs.length === 0) {
+                return;
             }
             
-            console.log('Switching tab from', this.activeTab, 'to', tabId);
-            this.activeTab = tabId;
-            this.page = 1; // Reset to first page when switching tabs
+            // Update "All" tab count
+            const allTab = this.groupTabs.find(tab => tab.id === 'all');
+            if (allTab) {
+                allTab.count = this.totalRecords;
+            }
             
-            // Don't change initialLoadComplete during tab switching
-            this.loadStatusPageData().then(() => {
-                // Keep tabs visible during switching
-                console.log('Tab switch complete');
-            });
+            // Update individual group tab counts
+            if (this.$root.publicGroupList && Array.isArray(this.$root.publicGroupList)) {
+                for (const group of this.$root.publicGroupList) {
+                    if (group && group.id) {
+                        const groupTab = this.groupTabs.find(tab => tab.id === group.id);
+                        if (groupTab) {
+                            groupTab.count = group.monitorList ? group.monitorList.length : 0;
+                        }
+                    }
+                }
+            }
+            
+            console.log('Updated tab counts:', this.groupTabs);
         },
+
+                 /**
+          * Switch to a different tab
+          * @param {string|number} tabId - Tab ID to switch to
+          * @returns {void}
+          */
+         switchTab(tabId) {
+             if (this.activeTab === tabId) {
+                 return; // Don't reload if clicking the same tab
+             }
+             
+             console.log('Switching tab from', this.activeTab, 'to', tabId);
+             this.activeTab = tabId;
+             this.page = 1; // Reset to first page when switching tabs
+             
+             // Force recalculation of totalRecords and paginatedData
+             this.$forceUpdate();
+             
+             // Reload data for the new tab
+             this.loadStatusPageData().then(() => {
+                 console.log('Tab switch complete for tab:', tabId);
+                 console.log('After tab switch - totalRecords:', this.totalRecords, 'paginatedData length:', this.paginatedData.length);
+             });
+         },
 
         /**
          * Provide syntax highlighting for CSS
@@ -1167,7 +1356,15 @@ export default {
         updateHeartbeatList() {
             // If editMode, it will use the data from websocket.
             if (! this.editMode) {
-                axios.get("/api/status-page/heartbeat/" + this.slug).then((res) => {
+                // Build API parameters including interval time
+                const params = new URLSearchParams();
+                if (this.config.autoRefreshInterval) {
+                    params.append('interval', this.config.autoRefreshInterval);
+                }
+                
+                const url = `/api/status-page/heartbeat/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                
+                axios.get(url).then((res) => {
                     if (res.data) {
                         const { heartbeatList, uptimeList } = res.data;
 
@@ -1257,7 +1454,12 @@ export default {
                 this.$root.getSocket().emit("saveStatusPage", this.slug, this.config, this.imgDataUrl, this.$root.publicGroupList || [], (res) => {
                     if (res && res.ok) {
                         this.enableEditMode = false;
+                        // Update with complete data from server, not filtered by tab
                         this.$root.publicGroupList = res.publicGroupList || [];
+                        
+                        // Reset tab to 'all' to show all groups after update
+                        this.activeTab = 'all';
+                        this.page = 1;
 
                         // Add some delay, so that the side menu animation would be better
                         let endTime = new Date();
@@ -1706,8 +1908,39 @@ footer {
     }
 }
 
-.refresh-info {
-    opacity: 0.7;
-}
+ .refresh-info {
+     opacity: 0.7;
+ }
+ 
+ /* Debug Information Styling */
+ .debug-info {
+     font-family: 'Courier New', monospace;
+     font-size: 0.85em;
+     background-color: #f8f9fa !important;
+     border-color: #dee2e6 !important;
+ }
+ 
+ .debug-info h6 {
+     color: #6c757d;
+     font-weight: 600;
+ }
+ 
+ .debug-info strong {
+     color: #495057;
+ }
+ 
+ .dark .debug-info {
+     background-color: #2d3748 !important;
+     border-color: #4a5568 !important;
+     color: #e2e8f0;
+ }
+ 
+ .dark .debug-info h6 {
+     color: #a0aec0;
+ }
+ 
+ .dark .debug-info strong {
+     color: #cbd5e0;
+ }
 
 </style>

@@ -246,9 +246,12 @@ module.exports.statusPageSocketHandler = (socket) => {
 
             apicache.clear();
 
+            // Get complete public group list with all monitors for the updated status page
+            const completePublicGroupList = await StatusPage.getStatusPageData(statusPage);
+
             callback({
                 ok: true,
-                publicGroupList,
+                publicGroupList: completePublicGroupList.publicGroupList,
             });
 
         } catch (error) {
