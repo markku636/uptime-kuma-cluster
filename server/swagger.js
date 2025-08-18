@@ -302,8 +302,12 @@ const swaggerOptions = {
  *             properties:
  *               field:
  *                 type: string
+ *                 description: Field name with error
+ *                 example: "email"
  *               message:
  *                 type: string
+ *                 description: Error message for the field
+ *                 example: "Email is required"
  */
 
 module.exports = {
