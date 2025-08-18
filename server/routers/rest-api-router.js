@@ -32,6 +32,7 @@ router.use("/api/v1", apiLimiter);
  *   get:
  *     summary: Get API status
  *     tags: [General]
+ *     security: []
  *     responses:
  *       200:
  *         description: API status
@@ -133,6 +134,11 @@ async function authenticateToken(req, res, next) {
  *       type: http
  *       scheme: bearer
  *       bearerFormat: JWT
+ *     apiKeyAuth:
+ *       type: apiKey
+ *       in: header
+ *       name: Authorization
+ *       description: API key authorization header. Example: "Authorization: {api_key}"
  *   schemas:
  *     Monitor:
  *       type: object
@@ -184,8 +190,7 @@ async function authenticateToken(req, res, next) {
  *   get:
  *     summary: Get all monitors
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     responses:
  *       200:
  *         description: List of monitors
@@ -212,12 +217,15 @@ router.get("/api/v1/monitors", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
         
-        const monitors = await R.findAll("monitor", " user_id = ? ORDER BY weight DESC, name ", [req.userId]);
+        const monitors = await R.findAll("monitor", " AND user_id = ? ORDER BY weight DESC, name ", [req.userId]);
         const monitorList = [];
-        
+
+        // Prepare preload data to avoid n+1 queries and undefined map errors
+        const monitorData = monitors.map((m) => ({ id: m.id, active: m.active }));
+        const preloadData = await Monitor.preparePreloadData(monitorData);
+
         for (let monitor of monitors) {
-            const monitorData = monitor.toJSON();
-            monitorList.push(monitorData);
+            monitorList.push(monitor.toJSON(preloadData));
         }
         
         res.json({
@@ -235,8 +243,7 @@ router.get("/api/v1/monitors", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get monitor by ID
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -296,8 +303,7 @@ router.get("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   post:
  *     summary: Create a new monitor
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     requestBody:
  *       required: true
  *       content:
@@ -449,8 +455,7 @@ router.post("/api/v1/monitors", authenticateToken, [
  *   put:
  *     summary: Update monitor
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -524,8 +529,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   delete:
  *     summary: Delete monitor
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -570,8 +574,7 @@ router.delete("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get monitor heartbeats
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -650,8 +653,7 @@ router.get("/api/v1/monitors/:id/heartbeats", authenticateToken, async (req, res
  *   get:
  *     summary: Get all notifications
  *     tags: [Notifications]
- *     security:
- *       - bearerAuth: []
+ 
  *     responses:
  *       200:
  *         description: List of notifications
@@ -689,8 +691,7 @@ router.get("/api/v1/notifications", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get all nodes
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     responses:
  *       200:
  *         description: List of nodes
@@ -741,8 +742,7 @@ router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get node by ID
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -796,8 +796,7 @@ router.get("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
  *   post:
  *     summary: Create a new node
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     requestBody:
  *       required: true
  *       content:
@@ -891,8 +890,7 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
  *   put:
  *     summary: Update node
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -980,8 +978,7 @@ router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
  *   delete:
  *     summary: Delete node
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -1046,8 +1043,7 @@ router.delete("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get monitors assigned to a specific node
  *     tags: [Nodes]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -1110,8 +1106,8 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
  *   post:
  *     summary: Create a new monitor
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -1301,8 +1297,7 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
  *   put:
  *     summary: Update monitor by ID
  *     tags: [Monitors]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -1478,8 +1473,8 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get all status pages
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
+ *       - apiKeyAuth: []
  *     responses:
  *       200:
  *         description: List of all status pages
@@ -1541,8 +1536,7 @@ router.get("/api/v1/status-pages", authenticateToken, async (req, res) => {
  *   post:
  *     summary: Create a new status page
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
  *     requestBody:
  *       required: true
  *       content:
@@ -1783,8 +1777,7 @@ router.post("/api/v1/status-pages", authenticateToken, [
  *   get:
  *     summary: Get status page by slug
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: slug
@@ -1837,8 +1830,7 @@ router.post("/api/v1/status-pages", authenticateToken, [
  *   get:
  *     summary: Get status page by slug
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: slug
@@ -1922,8 +1914,8 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
  *   put:
  *     summary: Update status page by slug
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: slug
@@ -2164,8 +2156,7 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
  *   delete:
  *     summary: Delete status page by slug
  *     tags: [Status Pages]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: slug
@@ -2230,8 +2221,7 @@ router.delete("/api/v1/status-pages/:slug", authenticateToken, async (req, res) 
  *   post:
  *     summary: Create a new group
  *     tags: [Groups]
- *     security:
- *       - bearerAuth: []
+ 
  *     requestBody:
  *       required: true
  *       content:
@@ -2384,8 +2374,7 @@ router.post("/api/v1/groups", authenticateToken, async (req, res) => {
  *   put:
  *     summary: Update group by ID
  *     tags: [Groups]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id
@@ -2530,8 +2519,7 @@ router.put("/api/v1/groups/:id", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get group by ID
  *     tags: [Groups]
- *     security:
- *       - bearerAuth: []
+ 
  *     parameters:
  *       - in: path
  *         name: id

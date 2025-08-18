@@ -321,8 +321,8 @@ let needSetup = false;
     // Standard Swagger UI setup
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs, swaggerOptions));
     
-    // Add Swagger JSON endpoint
-    app.get("/api-docs.json", (req, res) => {
+    // Add Swagger JSON endpoint (support absolute and relative paths from /api-docs)
+    app.get(["/api-docs.json", "/api-docs/api-docs.json"], (req, res) => {
         allowDevAllOrigin(res);
         res.setHeader("Content-Type", "application/json");
         res.send(specs);

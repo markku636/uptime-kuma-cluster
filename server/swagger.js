@@ -35,6 +35,126 @@ const options = {
                     name: "Authorization",
                     description: "API key authorization header. Example: \"Authorization: {api_key}\""
                 }                             
+            },
+            schemas: {
+                Monitor: {
+                    type: "object",
+                    required: ["name", "type", "url", "interval"],
+                    properties: {
+                        id: {
+                            type: "integer",
+                            description: "Unique identifier for the monitor",
+                            example: 1
+                        },
+                        name: {
+                            type: "string",
+                            description: "Monitor display name",
+                            example: "My Website"
+                        },
+                        type: {
+                            type: "string",
+                            description: "Type of monitor",
+                            enum: [
+                                "http", "port", "ping", "keyword", "dns", "docker", "push",
+                                "steam", "gamedig", "mqtt", "sqlserver", "postgres", "mysql",
+                                "mongodb", "radius", "redis", "group", "grpc", "json-query",
+                                "real-browser", "tailscale-ping", "kafka-producer", "manual"
+                            ],
+                            example: "http"
+                        },
+                        url: {
+                            type: "string",
+                            description: "URL to monitor",
+                            example: "https://example.com"
+                        },
+                        interval: {
+                            type: "integer",
+                            description: "Check interval in seconds",
+                            minimum: 20,
+                            example: 60
+                        },
+                        active: {
+                            type: "boolean",
+                            description: "Whether the monitor is active",
+                            example: true
+                        },
+                        timeout: {
+                            type: "integer",
+                            description: "Request timeout in seconds",
+                            example: 48
+                        },
+                        retryInterval: {
+                            type: "integer",
+                            description: "Retry interval in seconds",
+                            example: 60
+                        },
+                        maxretries: {
+                            type: "integer",
+                            description: "Maximum number of retries",
+                            example: 0
+                        },
+                        weight: {
+                            type: "integer",
+                            description: "Monitor weight for ordering",
+                            example: 2000
+                        },
+                        upsideDown: {
+                            type: "boolean",
+                            description: "Invert status (up becomes down)",
+                            example: false
+                        },
+                        description: {
+                            type: "string",
+                            description: "Monitor description",
+                            example: "Main website monitoring"
+                        },
+                        node_id: {
+                            type: "string",
+                            maxLength: 50,
+                            nullable: true,
+                            description: "Assigned node ID",
+                            example: "node1"
+                        }
+                    }
+                },
+                ApiResponse: {
+                    type: "object",
+                    properties: {
+                        ok: { type: "boolean", example: true },
+                        msg: { type: "string", example: "Success" },
+                        data: { type: "object" }
+                    }
+                },
+                ErrorResponse: {
+                    type: "object",
+                    properties: {
+                        ok: {
+                            type: "boolean",
+                            example: false
+                        },
+                        msg: {
+                            type: "string",
+                            description: "Error message"
+                        },
+                        errors: {
+                            type: "array",
+                            description: "Validation errors (if applicable)",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    field: {
+                                        type: "string",
+                                        description: "Field name with error"
+                                    },
+                                    message: {
+                                        type: "string",
+                                        description: "Error message for the field"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         security: [
