@@ -434,7 +434,7 @@ router.post("/api/v1/monitors", authenticateToken, [
             ok: true,
             msg: "Monitor created successfully",
             data: {
-                monitorID: monitor.id,
+                monitor_id: monitor.id,
                 node_id: monitor.node_id || null
             }
         });
