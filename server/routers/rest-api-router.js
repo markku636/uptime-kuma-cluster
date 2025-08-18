@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const Monitor = require("../model/monitor");
 const User = require("../model/user");
 const StatusPage = require("../model/status_page");
+const Database = require("../database");
 const { Notification } = require("../notification");
 const { 
     sendHttpError, 
@@ -631,12 +632,13 @@ router.get("/api/v1/monitors/:id/heartbeats", authenticateToken, async (req, res
             });
         }
         
+        const sqlHourOffset = Database.sqlHourOffset();
         const heartbeats = await R.getAll(`
             SELECT * FROM heartbeat 
-            WHERE monitor_id = ? AND time > datetime('now', '-${period} hours')
+            WHERE time > ${sqlHourOffset} AND monitor_id = ?
             ORDER BY time DESC 
             LIMIT 100
-        `, [monitorId]);
+        `, [ -period, monitorId ]);
         
         res.json({
             ok: true,
@@ -1518,7 +1520,7 @@ router.get("/api/v1/status-pages", authenticateToken, async (req, res) => {
         const statusPageList = [];
         
         for (let statusPage of statusPages) {
-            statusPageList.push(statusPage.toJSON());
+            statusPageList.push(await statusPage.toJSON());
         }
         
         res.json({
@@ -1879,7 +1881,7 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
         }
         
         // Get basic status page data
-        const basicData = statusPage.toJSON();
+        const basicData = await statusPage.toJSON();
         
         // Get public groups with monitors if requested
         let publicGroupList = [];

@@ -210,6 +210,16 @@ try {
     console.log("Swagger specs loaded successfully");
     console.log("Total paths found:", Object.keys(specs.paths || {}).length);
     console.log("Paths:", Object.keys(specs.paths || {}));
+    // Ensure base schemas exist (guard against overrides from JSDoc blocks)
+    const baseSchemas = (options.definition && options.definition.components && options.definition.components.schemas) || {};
+    specs.components = specs.components || {};
+    specs.components.schemas = { ...(baseSchemas || {}), ...(specs.components.schemas || {}) };
+    // Basic sanity: ensure critical schemas are present
+    ["Monitor", "ErrorResponse", "ApiResponse"].forEach((schemaName) => {
+        if (!specs.components.schemas[schemaName] && baseSchemas[schemaName]) {
+            specs.components.schemas[schemaName] = baseSchemas[schemaName];
+        }
+    });
 } catch (error) {
     console.error("Error loading Swagger specs:", error);
     specs = {
