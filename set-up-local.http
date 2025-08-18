@@ -1,31 +1,27 @@
-### Kuma API 測試文件
-### 進入後台 > 設定 > api token ，建立並取得api token
-### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
+### Kuma API 測試範例
 
-# 基礎 URL 配置
+# 基礎 URL 變數
 @baseUrl = http://127.0.0.1:3001
 @apiKey = uk2_TDovbJ9XG6-C1wyTuhgwj6QOOabZhwFbjcXiwyQC
 
-### 1. 測試 API 狀態
+### 測試 API 狀態
 GET {{baseUrl}}/api/v1/status
 
-### 2. 使用 API Key 查詢 ID 為 1 的 monitor
-GET {{baseUrl}}/api/v1/monitors/1
-Authorization: {{apiKey}}
-
-
-### 3. 獲取所有 monitors
+### 取得所有 monitors
 GET {{baseUrl}}/api/v1/monitors
 Authorization: {{apiKey}}
 
+### 取得指定 monitor (ID = 1)
+GET {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
 
-### 9. 創建一個新的 HTTP monitor
+### 建立 HTTP 監控器
 POST {{baseUrl}}/api/v1/monitors
 Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
-  "name": "測試網站",
+  "name": "示例 HTTP 監控",
   "type": "http",
   "url": "https://httpbin.org/status/200",
   "interval": 60,
@@ -35,292 +31,77 @@ Content-Type: application/json
   "method": "GET",
   "node_id": "node1"
 }
-  
-### 12. 更新 monitor (假設 ID 為 2)
-PUT {{baseUrl}}/api/v1/monitors/2
-Authorization: {{apiKey}}
-Content-Type: application/json
 
-{
-  "name": "更新後的監控器名稱",
-  "interval": 120
-}
-
-### 13. 刪除 monitor (假設 ID 為 2)
-DELETE {{baseUrl}}/api/v1/monitors/2
-Authorization: {{apiKey}}
-
-### 14. 暫停 monitor
-PUT {{baseUrl}}/api/v1/monitors/1
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "active": false
-}
-
-### 15. 啟用 monitor
-PUT {{baseUrl}}/api/v1/monitors/1
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "active": true
-}
-
-
-
-### 17. 創建新的狀態頁面
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "我的狀態頁面",
-  "slug": "my-status-page",
-  "description": "這是一個通過 REST API 創建的狀態頁面",
-  "theme": "auto",
-  "autoRefreshInterval": 300,
-  "published": true,
-  "search_engine_index": true,
-  "show_tags": false,
-  "show_powered_by": true,
-  "show_certificate_expiry": false
-}
-
-
-
-
-### 18. 創建生產環境狀態頁面
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "生產環境服務狀態",
-  "slug": "production-services",
-  "description": "生產環境服務的狀態監控頁面",
-  "theme": "dark",
-  "autoRefreshInterval": 180,
-  "published": true,
-  "show_powered_by": false
-}
-
-### 19. 創建開發環境狀態頁面
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "開發環境服務狀態",
-  "slug": "dev-services",
-  "description": "開發環境服務的狀態監控頁面",
-  "theme": "light",
-  "autoRefreshInterval": 600,
-  "published": false
-}
-
-### 20. 根據 slug 獲取特定狀態頁面
-GET {{baseUrl}}/api/v1/status-pages/my-status-page
-Authorization: {{apiKey}}
-
-### 21. 更新狀態頁面
-PUT {{baseUrl}}/api/v1/status-pages/my-status-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "更新後的狀態頁面標題",
-  "description": "這是更新後的描述",
-  "theme": "light",
-  "autoRefreshInterval": 240
-}
-
-### 22. 更新狀態頁面發布狀態
-PUT {{baseUrl}}/api/v1/status-pages/dev-services
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "published": true,
-  "search_engine_index": true
-}
-
-### 23. 刪除狀態頁面
-DELETE {{baseUrl}}/api/v1/status-pages/my-status-page
-Authorization: {{apiKey}}
-
-### 24. 批量創建狀態頁面示例
-### 客戶門戶狀態頁面
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "客戶門戶狀態",
-  "slug": "customer-portal",
-  "description": "面向客戶的門戶服務狀態",
-  "theme": "auto",
-  "autoRefreshInterval": 300,
-  "show_powered_by": false,
-  "show_certificate_expiry": true
-}
-
-### 25. 測試狀態頁面 slug 驗證 (應該失敗)
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "無效的 Slug 測試",
-  "slug": "invalid--slug--test",
-  "description": "這個 slug 包含連續破折號，應該被拒絕"
-}
-
-### 26. 測試重複 slug (應該失敗)
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "重複的 Slug 測試",
-  "slug": "production-services",
-  "description": "這個 slug 已經存在，應該被拒絕"
-}
-
-### ========================================
-### 新實作的 REST API 測試
-### ========================================
-
-### 27. 創建 HTTP 監控器 (POST)
+### 建立 Ping 監控器
 POST {{baseUrl}}/api/v1/monitors
 Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
-  "name": "新的HTTP監控器",
-  "type": "http",
-  "url": "https://httpbin.org/status/200",
-  "interval": 60,
-  "active": true,
-  "retryInterval": 30,
-  "timeout": 10,
-  "method": "GET",
-  "node_id": "node1",
-  "description": "通過 REST API 創建的 HTTP 監控器"
-}
-
-### 28. 創建 Ping 監控器 (POST)
-POST {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "新的Ping監控器",
+  "name": "示例 Ping 監控",
   "type": "ping",
   "hostname": "8.8.8.8",
   "interval": 60,
-  "active": true,
-  "retryInterval": 30,
-  "timeout": 10,
-  "description": "通過 REST API 創建的 Ping 監控器"
+  "active": true
 }
 
-### 29. 創建 DNS 監控器 (POST)
+### 建立 DNS 監控器
 POST {{baseUrl}}/api/v1/monitors
 Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
-  "name": "新的DNS監控器",
+  "name": "示例 DNS 監控",
   "type": "dns",
   "hostname": "google.com",
   "interval": 60,
-  "active": true,
-  "retryInterval": 30,
-  "description": "通過 REST API 創建的 DNS 監控器"
+  "active": true
 }
 
-### 30. 更新監控器 (PUT) - 假設 ID 為 1
+### 更新 monitor (ID = 1)
 PUT {{baseUrl}}/api/v1/monitors/1
 Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
-  "name": "更新後的監控器名稱",
-  "description": "更新後的描述",
-  "interval": 120,
+  "name": "更新後名稱",
+  "interval": 120
+}
+
+### 暫停 monitor (ID = 1)
+PUT {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+Content-Type: application/json
+
+{
   "active": false
 }
 
-### 31. 創建新的狀態頁面 (POST)
+### 刪除 monitor (ID = 1)
+DELETE {{baseUrl}}/api/v1/monitors/1
+Authorization: {{apiKey}}
+
+### 取得 monitor 心跳資料 (ID = 1)
+GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
+Authorization: {{apiKey}}
+
+### 取得所有狀態頁面
+GET {{baseUrl}}/api/v1/status-pages
+Authorization: {{apiKey}}
+
+### 建立狀態頁面
 POST {{baseUrl}}/api/v1/status-pages
 Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
   "title": "REST API 測試狀態頁面",
-  "slug": "rest-api-test-page",
-  "description": "通過 REST API 創建的測試狀態頁面",
-  "theme": "dark",
-  "autoRefreshInterval": 180,
-  "published": true,
-  "search_engine_index": true,
-  "show_tags": true,
-  "show_powered_by": false,
-  "show_certificate_expiry": true
-}
-
-### 32. 創建帶群組的狀態頁面 (POST)
-POST {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "完整測試狀態頁面",
   "slug": "full-test-page",
-  "description": "包含群組的完整測試狀態頁面",
-  "theme": "auto",
-  "autoRefreshInterval": 300,
-  "published": true,
-  "publicGroupList": [
-    {
-      "name": "測試群組 1",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": true
-        }
-      ]
-    }
-  ]
+  "description": "測試頁面",
+  "published": true
 }
 
-
-### 39. 測試錯誤處理 - 創建無效監控器 (應該失敗)
-POST {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "",
-  "type": "invalid_type"
-}
-
-### 40. 測試錯誤處理 - 更新不存在的監控器 (應該失敗)
-PUT {{baseUrl}}/api/v1/monitors/99999
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "不存在的監控器"
-}
-
-### ========================================
-### PUT API 測試
-### ========================================
-
-### 41. 更新狀態頁面 (PUT) - 基本欄位更新
+### 更新狀態頁面 (基本欄位)
 PUT {{baseUrl}}/api/v1/status-pages/full-test-page
 Authorization: {{apiKey}}
 Content-Type: application/json
@@ -330,88 +111,10 @@ Content-Type: application/json
   "description": "更新後的狀態頁面描述",
   "theme": "dark",
   "autoRefreshInterval": 180,
-  "published": false,
-  "search_engine_index": false,
-  "show_tags": true,
-  "show_powered_by": false,
-  "show_certificate_expiry": true
+  "published": false
 }
 
-### 42. 更新狀態頁面的 publicGroupList (PUT)
-PUT {{baseUrl}}/api/v1/status-pages/full-test-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "更新群組的狀態頁面",
-  "publicGroupList": [
-    {
-      "name": "更新後的群組 1",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": true
-        },
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://updated-custom-url.example.com"
-        },
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://prod-env.example.com"
-        },
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://staging-env.example.com"
-        },
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://dev-env.example.com"
-        },
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://test-env.example.com"
-        }
-      ]
-    },
-    {
-      "name": "新增的群組 2",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://api-1.example.com"
-        },
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://api-2.example.com"
-        }
-      ]
-    },
-    {
-      "name": "測試環境群組",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": true
-        },
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://test-mirror.example.com"
-        }
-      ]
-    }
-  ]
-}
-
-### 43. 完全重組 publicGroupList (PUT)
+### 更新狀態頁面 publicGroupList
 PUT {{baseUrl}}/api/v1/status-pages/full-test-page
 Authorization: {{apiKey}}
 Content-Type: application/json
@@ -419,106 +122,11 @@ Content-Type: application/json
 {
   "publicGroupList": [
     {
-      "name": "重組後的唯一群組",
+      "name": "服務群組",
       "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": true
-        }
+        { "id": 1, "sendUrl": true },
+        { "id": 2, "sendUrl": false, "url": "https://custom.example.com" }
       ]
     }
   ]
 }
-
-### 44. 清空 publicGroupList (PUT)
-PUT {{baseUrl}}/api/v1/status-pages/full-test-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "清空群組的狀態頁面",
-  "publicGroupList": []
-}
-
-### 45. 僅更新部分欄位，不動 publicGroupList (PUT)
-PUT {{baseUrl}}/api/v1/status-pages/full-test-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "僅更新標題",
-  "description": "僅更新描述，不影響現有群組"
-}
-
-### 46. 更新帶有新監控器的 publicGroupList (PUT)
-PUT {{baseUrl}}/api/v1/status-pages/full-test-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "publicGroupList": [
-    {
-      "name": "生產環境服務",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": true
-        },
-        {
-          "id": 2,
-          "sendUrl": true
-        },
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://prod-backup.example.com"
-        }
-      ]
-    },
-    {
-      "name": "開發環境服務",
-      "monitorList": [
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://dev.example.com"
-        },
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://dev-api.example.com"
-        }
-      ]
-    },
-    {
-      "name": "測試環境服務",
-      "monitorList": [
-        {
-          "id": 1,
-          "sendUrl": false,
-          "url": "https://test.example.com"
-        },
-        {
-          "id": 2,
-          "sendUrl": false,
-          "url": "https://staging.example.com"
-        }
-      ]
-    }
-  ]
-}
-
-
-
-### 6. 獲取 monitor 的心跳數據
-GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
-Authorization: {{apiKey}}
-
-
-### ========================================
-### Status Page REST API 測試
-### ========================================
-
-### 16. 獲取所有狀態頁面
-GET {{baseUrl}}/api/v1/status-pages
-Authorization: {{apiKey}}
