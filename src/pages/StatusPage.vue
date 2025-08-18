@@ -1138,6 +1138,41 @@ export default {
     methods: {
 
         /**
+         * Get monitor IDs for the current active tab
+         * @returns {Array} Array of monitor IDs for current tab
+         */
+        getCurrentTabMonitorIds() {
+            if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
+                return [];
+            }
+
+            // If activeTab is 'all', return all monitor IDs
+            if (this.activeTab === 'all') {
+                const allMonitorIds = [];
+                this.$root.publicGroupList.forEach(group => {
+                    if (group.monitorList && Array.isArray(group.monitorList)) {
+                        group.monitorList.forEach(monitor => {
+                            if (monitor && monitor.id) {
+                                allMonitorIds.push(monitor.id);
+                            }
+                        });
+                    }
+                });
+                return allMonitorIds;
+            }
+
+            // For specific group tab, get monitors from that group
+            const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
+            if (selectedGroup && selectedGroup.monitorList && Array.isArray(selectedGroup.monitorList)) {
+                return selectedGroup.monitorList
+                    .filter(monitor => monitor && monitor.id)
+                    .map(monitor => monitor.id);
+            }
+
+            return [];
+        },
+
+        /**
          * Get status page data
          * It should be preloaded in window.preloadData
          * @param {boolean} noPagination - If true, load all data without pagination
@@ -1366,29 +1401,33 @@ export default {
                 console.log('After tab switch - totalRecords:', this.totalRecords, 'paginatedData length:', this.paginatedData.length);
                 console.log('After tab switch - perPage:', this.perPage, 'page:', this.page);
                 
-                            // Force pagination component to update
-            this.$nextTick(() => {
-                if (this.$refs.pagination) {
-                    this.$refs.pagination.$forceUpdate();
-                    console.log('Pagination component force updated');
-                }
-                
-                // Ensure perPage is still correct
-                if (this.perPage !== currentPerPage) {
-                    console.warn('perPage was changed during tab switch, restoring:', currentPerPage);
-                    this.perPage = currentPerPage;
-                }
-                
-                // Force another update to ensure pagination is fully recalculated
+                // Force pagination component to update
                 this.$nextTick(() => {
-                    this.$forceUpdate();
-                    console.log('Component fully updated after tab switch');
+                    if (this.$refs.pagination) {
+                        this.$refs.pagination.$forceUpdate();
+                        console.log('Pagination component force updated');
+                    }
                     
-                    // Re-show pagination component
-                    this.showPagination = true;
-                    console.log('Pagination component re-shown');
+                    // Ensure perPage is still correct
+                    if (this.perPage !== currentPerPage) {
+                        console.warn('perPage was changed during tab switch, restoring:', currentPerPage);
+                        this.perPage = currentPerPage;
+                    }
+                    
+                    // Force another update to ensure pagination is fully recalculated
+                    this.$nextTick(() => {
+                        this.$forceUpdate();
+                        console.log('Component fully updated after tab switch');
+                        
+                        // Re-show pagination component
+                        this.showPagination = true;
+                        console.log('Pagination component re-shown');
+                        
+                        // Trigger heartbeat API update for the new tab
+                        this.updateHeartbeatList();
+                        console.log('Heartbeat API triggered for new tab:', tabId);
+                    });
                 });
-            });
             });
         },
 
@@ -1414,14 +1453,34 @@ export default {
                     params.append('interval', this.config.autoRefreshInterval);
                 }
                 
+                // Add monitor IDs for current tab to only fetch relevant data
+                const currentTabMonitorIds = this.getCurrentTabMonitorIds();
+                if (currentTabMonitorIds && currentTabMonitorIds.length > 0) {
+                    params.append('monitorIds', currentTabMonitorIds.join(','));
+                }
+                
                 const url = `/api/status-page/heartbeat/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                
+                console.log('🔄 Updating heartbeat list for tab:', this.activeTab);
+                console.log('📊 Monitor IDs:', currentTabMonitorIds);
+                console.log('🌐 API URL:', url);
                 
                 axios.get(url).then((res) => {
                     if (res.data) {
                         const { heartbeatList, uptimeList } = res.data;
 
+                        console.log('✅ Heartbeat data received:', {
+                            heartbeatListKeys: Object.keys(heartbeatList || {}),
+                            uptimeListKeys: Object.keys(uptimeList || {}),
+                            totalMonitors: currentTabMonitorIds ? currentTabMonitorIds.length : 'all'
+                        });
+
+                        // Update root heartbeat data
                         this.$root.heartbeatList = heartbeatList || {};
                         this.$root.uptimeList = uptimeList || {};
+
+                        // Force update of components that depend on heartbeat data
+                        this.$forceUpdate();
 
                         if (heartbeatList && typeof heartbeatList === 'object') {
                             const heartbeatIds = Object.keys(heartbeatList);
@@ -1442,9 +1501,21 @@ export default {
                         this.loadedData = true;
                         this.lastUpdateTime = dayjs();
                         this.updateUpdateTimer();
+                        
+                        // Force re-render of heartbeat components after data update
+                        this.$nextTick(() => {
+                            // Trigger a global event to notify components that heartbeat data has changed
+                            this.$root.$emit('heartbeat-data-updated', {
+                                tabId: this.activeTab,
+                                monitorIds: currentTabMonitorIds,
+                                heartbeatList: heartbeatList
+                            });
+                            
+                            console.log('🎯 Heartbeat data update complete for tab:', this.activeTab);
+                        });
                     }
                 }).catch((error) => {
-                    console.error('Error updating heartbeat list:', error);
+                    console.error('❌ Error updating heartbeat list:', error);
                 });
             }
         },

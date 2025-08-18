@@ -3,8 +3,8 @@
 ### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
 
 # 基礎 URL 配置
-@baseUrl = http://127.0.0.1:3001
-@apiKey = uk1_fhNBcThusPsjocw0YmR144BJs-RQZV9weVr6NvZJ
+@baseUrl = http://192.168.99.88:9091
+@apiKey = uk1_SIDZNvdGb6dLKvtBJEfoYhoDTAwIn68aqlO-HwZN
 
 ### 1. 測試 API 狀態
 GET {{baseUrl}}/api/v1/status
@@ -31,22 +31,7 @@ GET {{baseUrl}}/api-docs
 ### 8. 測試健康檢查
 GET {{baseUrl}}/health
 
-### 9. 創建一個新的 HTTP monitor
-POST {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "測試網站",
-  "type": "http",
-  "url": "https://httpbin.org/status/200",
-  "interval": 60,
-  "active": true,
-  "retryInterval": 30,
-  "timeout": 10,
-  "method": "GET",
-  "node_id": "node1"
-}
+  
 
 ### 10. 創建一個 Ping monitor
 POST {{baseUrl}}/api/v1/monitors

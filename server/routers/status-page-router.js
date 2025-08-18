@@ -96,14 +96,37 @@ router.get("/api/status-page/heartbeat/:slug", cache("1 minutes"), async (reques
         slug = slug.toLowerCase();
         let statusPageID = await StatusPage.slugToID(slug);
 
-        let monitorIDList = await R.getCol(`
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND public = 1
-            AND \`group\`.status_page_id = ?
-        `, [
-            statusPageID
-        ]);
+        // Check if specific monitor IDs are requested
+        const requestedMonitorIds = request.query.monitorIds;
+        let monitorIDList;
+
+        if (requestedMonitorIds) {
+            // Parse comma-separated monitor IDs and validate they belong to this status page
+            const monitorIds = requestedMonitorIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+            
+            if (monitorIds.length > 0) {
+                // Validate that requested monitors belong to public groups in this status page
+                monitorIDList = await R.getCol(`
+                    SELECT DISTINCT monitor_group.monitor_id FROM monitor_group, \`group\`
+                    WHERE monitor_group.group_id = \`group\`.id
+                    AND public = 1
+                    AND \`group\`.status_page_id = ?
+                    AND monitor_group.monitor_id IN (${monitorIds.map(() => '?').join(',')})
+                `, [statusPageID, ...monitorIds]);
+            } else {
+                monitorIDList = [];
+            }
+        } else {
+            // Get all public monitors for this status page (original behavior)
+            monitorIDList = await R.getCol(`
+                SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+                WHERE monitor_group.group_id = \`group\`.id
+                AND public = 1
+                AND \`group\`.status_page_id = ?
+            `, [
+                statusPageID
+            ]);
+        }
 
         for (let monitorID of monitorIDList) {
             let list = await R.getAll(`
