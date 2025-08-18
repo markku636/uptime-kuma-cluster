@@ -1039,7 +1039,7 @@ export default {
             this.slug = "default";
         }
 
-        this.getData().then((res) => {
+        this.getData(false).then((res) => {
             this.config = res.data?.config || {};
 
             if (!this.config.domainNameList) {
@@ -1061,9 +1061,28 @@ export default {
             this.incident = res.data.incident;
             this.maintenanceList = res.data.maintenanceList;
             
-            // If not in edit mode, load paginated data directly
-            if (!this.enableEditMode) {
-                // Start with the first group tab instead of 'all'
+            // Check if we should load all data without pagination
+            // For now, always load paginated data in normal mode, edit mode will handle its own data loading
+            const shouldLoadAllData = false;
+            
+            if (shouldLoadAllData) {
+                // Load all data without pagination (edit mode or config setting)
+                if (res.data && res.data.publicGroupList) {
+                    this.$root.publicGroupList = res.data.publicGroupList;
+                    this.generateTabsFromData();
+                    this.loadedData = true;
+                    this.tabsInitialized = true;
+                }
+                
+                this.loading = false;
+                this.$nextTick(() => {
+                    setTimeout(() => {
+                        this.initialLoadComplete = true;
+                        console.log('All data load complete (no pagination)');
+                    }, 100);
+                });
+            } else {
+                // Load paginated data
                 this.page = 1;
                 
                 this.loadStatusPageData().then(() => {
@@ -1093,21 +1112,6 @@ export default {
                         }, 100);
                     });
                 });
-            } else {
-                // In edit mode, load all data without pagination
-                if (res.data && res.data.publicGroupList) {
-                    this.$root.publicGroupList = res.data.publicGroupList;
-                    this.generateTabsFromData();
-                    this.loadedData = true;
-                }
-                
-                this.loading = false;
-                this.$nextTick(() => {
-                    setTimeout(() => {
-                        this.initialLoadComplete = true;
-                        console.log('Edit mode load complete');
-                    }, 100);
-                });
             }
 
             // Configure auto-refresh loop
@@ -1136,23 +1140,30 @@ export default {
         /**
          * Get status page data
          * It should be preloaded in window.preloadData
+         * @param {boolean} noPagination - If true, load all data without pagination
          * @returns {Promise<any>} Status page data
          */
-        getData: function () {
+        getData: function (noPagination = false) {
             if (window.preloadData) {
                 return new Promise(resolve => resolve({
                     data: window.preloadData
                 }));
             } else {
-                return axios.get("/api/status-page/" + this.slug);
+                const params = new URLSearchParams();
+                if (noPagination) {
+                    params.append('no_pagination', 'true');
+                }
+                const url = `/api/status-page/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
+                return axios.get(url);
             }
         },
 
         /**
          * Load status page data with pagination and tab support
+         * @param {boolean} noPagination - If true, load all data without pagination
          * @returns {Promise<void>}
          */
-        async loadStatusPageData() {
+        async loadStatusPageData(noPagination = false) {
             if (this.enableEditMode) {
                 return Promise.resolve(); // Don't load paginated data in edit mode
             }
@@ -1160,11 +1171,18 @@ export default {
             try {
                 // Build API parameters for backend pagination
                 const params = new URLSearchParams();
-                if (this.activeTab !== 'all') {
-                    params.append('group', this.activeTab);
+                
+                if (noPagination) {
+                    // Request all data without pagination
+                    params.append('no_pagination', 'true');
+                } else {
+                    // Use pagination
+                    if (this.activeTab !== 'all') {
+                        params.append('group', this.activeTab);
+                    }
+                    params.append('page', this.page);
+                    params.append('limit', this.perPage);
                 }
-                params.append('page', this.page);
-                params.append('limit', this.perPage);
                 
                 // Add interval time for data freshness
                 if (this.config.autoRefreshInterval) {
@@ -1186,10 +1204,18 @@ export default {
                         console.log('API response does not contain publicGroupList, keeping existing data');
                     }
                     
-                    // Set pagination data if available from backend
-                    if (response.data.pagination) {
-                        this.pagination = response.data.pagination;
-                        console.log('Backend pagination data:', this.pagination);
+                    if (noPagination) {
+                        // When no pagination, clear pagination data and show all data
+                        this.pagination = null;
+                        this.showPagination = false;
+                        console.log('No pagination mode: showing all data');
+                    } else {
+                        // Set pagination data if available from backend
+                        if (response.data.pagination) {
+                            this.pagination = response.data.pagination;
+                            this.showPagination = true;
+                            console.log('Backend pagination data:', this.pagination);
+                        }
                     }
                     
                     // Set group tabs if available, otherwise keep existing ones
@@ -1209,9 +1235,11 @@ export default {
                     this.loadedData = true;
                     this.tabsInitialized = true;
                     
-                    console.log('Loaded paginated data:', {
+                    console.log('Loaded data:', {
+                        noPagination,
                         groupTabs: this.groupTabs,
                         pagination: this.pagination,
+                        showPagination: this.showPagination,
                         totalRecords: this.totalRecords,
                         currentPage: this.page,
                         activeTab: this.activeTab,
@@ -1224,7 +1252,7 @@ export default {
             } catch (error) {
                 console.error('Error loading status page data:', error);
                 // Fallback to original method
-                return this.getData().then((res) => {
+                return this.getData(false).then((res) => {
                     if (res.data && res.data.publicGroupList) {
                         this.$root.publicGroupList = res.data.publicGroupList;
                         // Generate tabs from existing data
@@ -1473,10 +1501,9 @@ export default {
             try {
                 console.log('Loading all data for edit mode...');
                 
-                // Build API parameters for loading all data
+                // Build API parameters for loading all data without pagination
                 const params = new URLSearchParams();
-                // No group filter - get all groups
-                // No page/limit - get all monitors
+                params.append('no_pagination', 'true');
                 // Add interval time for data freshness
                 if (this.config.autoRefreshInterval) {
                     params.append('interval', this.config.autoRefreshInterval);
@@ -1520,7 +1547,7 @@ export default {
             } catch (error) {
                 console.error('Error loading all data for edit mode:', error);
                 // Fallback to original method
-                return this.getData().then((res) => {
+                return this.getData(true).then((res) => {
                     if (res.data && res.data.publicGroupList) {
                         this.$root.publicGroupList = res.data.publicGroupList;
                         this.generateTabsFromData();

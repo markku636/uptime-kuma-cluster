@@ -56,10 +56,14 @@ router.get("/api/status-page/:slug", cache("5 minutes"), async (request, respons
         const groupFilter = request.query.group || null;
         const page = parseInt(request.query.page) || 1;
         const limit = Math.min(parseInt(request.query.limit) || 10, 50); // Max 50 items per page
+        const noPagination = request.query.no_pagination === 'true' || request.query.no_pagination === '1';
 
         // Get status page data with pagination
         let statusPageData;
-        if (groupFilter || page > 1 || limit !== 10) {
+        if (noPagination) {
+            // Use original method when no_pagination is requested
+            statusPageData = await StatusPage.getStatusPageData(statusPage);
+        } else if (groupFilter || page > 1 || limit !== 10) {
             // Use paginated version if any pagination parameters are provided
             statusPageData = await StatusPage.getStatusPageDataPaginated(statusPage, {
                 groupFilter,
