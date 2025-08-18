@@ -40,9 +40,11 @@ Content-Type: application/json
 {
   "name": "示例 Ping 監控",
   "type": "ping",
+  "url": "https://example.com",
   "hostname": "8.8.8.8",
   "interval": 60,
-  "active": true
+  "active": true,
+  "node_id": "node1"
 }
 
 ### 建立 DNS 監控器
@@ -53,6 +55,7 @@ Content-Type: application/json
 {
   "name": "示例 DNS 監控",
   "type": "dns",
+  "url": "https://example.com",
   "hostname": "google.com",
   "interval": 60,
   "active": true
