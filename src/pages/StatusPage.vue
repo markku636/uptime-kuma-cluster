@@ -366,6 +366,7 @@
                          :per-page="perPage"
                          :options="paginationConfig"
                          data-testid="status-page-pagination"
+                         @page-changed="onPageChanged"
                      />
 
                  </div>
@@ -640,7 +641,9 @@ export default {
                 nextText: "›",
                 chunk: 10,  // Explicitly set chunk to match perPage
                 format: true
-            }
+            },
+            // Heartbeat update management
+            heartbeatUpdateTimeout: null
         };
     },
     computed: {
@@ -1001,16 +1004,31 @@ export default {
             }
         },
 
-                 /**
-          * Watch for page changes to reload data
-          * @returns {void}
-          */
-         page() {
+                         /**
+         * Watch for page changes to reload data
+         * @returns {void}
+         */
+         page() {            
              if (!this.enableEditMode) {
-                 console.log('Page changed to:', this.page, 'reloading data...');
+                 console.log('🔄 Page changed to:', this.page, 'reloading data...');
+                 console.log('📊 Current tab:', this.activeTab, 'perPage:', this.perPage);
+                 
                  // Force recalculation of paginatedData
                  this.$forceUpdate();
-                 this.loadStatusPageData();
+                 
+                 // Load status page data first
+                 this.loadStatusPageData().then(() => {
+                     // After loading status page data, trigger heartbeat update
+                     console.log('✅ Status page data loaded, triggering heartbeat update for page:', this.page);
+                     this.$nextTick(() => {
+                         this.updateHeartbeatList();
+                     });
+                 }).catch((error) => {
+                     console.error('❌ Error loading status page data:', error);
+                     // Even if status page loading fails, still update heartbeat
+                     console.log('🔄 Status page load failed, but still updating heartbeat for page:', this.page);
+                     this.updateHeartbeatList();
+                 });
              }
          }
 
@@ -1084,6 +1102,7 @@ export default {
             } else {
                 // Load paginated data
                 this.page = 1;
+                console.log('Initial page set to 1 for paginated data loading');
                 
                 this.loadStatusPageData().then(() => {
                     this.loading = false;
@@ -1107,8 +1126,14 @@ export default {
                                 loading: this.loading,
                                 initialLoadComplete: this.initialLoadComplete,
                                 totalRecords: this.totalRecords,
-                                activeTab: this.activeTab
+                                activeTab: this.activeTab,
+                                page: this.page,
+                                perPage: this.perPage
                             });
+                            
+                            // Now trigger initial heartbeat update with proper monitor IDs
+                            console.log('🚀 Triggering initial heartbeat update after data load');
+                            this.updateHeartbeatList();
                         }, 100);
                     });
                 });
@@ -1116,10 +1141,12 @@ export default {
 
             // Configure auto-refresh loop
             feedInterval = setInterval(() => {
+                console.log('Auto-refresh interval triggered, updating heartbeat data');
                 this.updateHeartbeatList();
             }, (this.config.autoRefreshInterval + 10) * 1000);
 
             this.updateUpdateTimer();
+            console.log('Update timer configured for auto-refresh interval:', this.config.autoRefreshInterval, 'seconds');
         }).catch( function (error) {
             if (error.response && error.response.status === 404) {
                 location.href = "/page-not-found";
@@ -1127,7 +1154,8 @@ export default {
             console.log('Error loading status page data:', error);
         });
 
-        this.updateHeartbeatList();
+        // Note: Initial heartbeat update will be triggered after data is loaded
+        console.log('Initial heartbeat update will be triggered after data loading');
 
         // Go to edit page if ?edit present
         // null means ?edit present, but no value
@@ -1138,37 +1166,95 @@ export default {
     methods: {
 
         /**
-         * Get monitor IDs for the current active tab
-         * @returns {Array} Array of monitor IDs for current tab
+         * Handle pagination component page change event
+         * @param {number} newPage - The new page number
+         * @returns {void}
+         */
+        onPageChanged(newPage) {
+            console.log('🎯 Pagination component triggered page change to:', newPage);
+            console.log('📊 Current internal page state:', this.page);
+            
+            // Ensure the page state is synchronized
+            if (this.page !== newPage) {
+                console.log('📝 Updating internal page state from', this.page, 'to', newPage);
+                this.page = newPage;
+            }
+            
+            // Note: The page watch will handle the heartbeat update after page change
+            console.log('💓 Page change registered, watch will handle heartbeat update for page:', newPage);
+        },
+
+        /**
+         * Get monitor IDs for the current active tab and page
+         * @returns {Array} Array of monitor IDs for current tab and page
          */
         getCurrentTabMonitorIds() {
             if (!this.$root.publicGroupList || this.$root.publicGroupList.length === 0) {
+                console.log('❌ No publicGroupList available for monitor ID extraction');
                 return [];
             }
 
-            // If activeTab is 'all', return all monitor IDs
+            console.log(`🔍 Getting monitor IDs for tab: ${this.activeTab}, page: ${this.page}, perPage: ${this.perPage}`);
+
+            // If activeTab is 'all', return only the monitors for the current page
             if (this.activeTab === 'all') {
-                const allMonitorIds = [];
+                console.log('📋 Active tab is "all", getting monitors for current page from all groups');
+                
+                // Collect all monitors from all groups
+                const allMonitors = [];
                 this.$root.publicGroupList.forEach(group => {
                     if (group.monitorList && Array.isArray(group.monitorList)) {
                         group.monitorList.forEach(monitor => {
                             if (monitor && monitor.id) {
-                                allMonitorIds.push(monitor.id);
+                                allMonitors.push(monitor);
                             }
                         });
                     }
                 });
-                return allMonitorIds;
+                
+                // Apply pagination for "all" tab
+                if (this.page > 1 && allMonitors.length > 0) {
+                    const startIndex = (this.page - 1) * this.perPage;
+                    const endIndex = startIndex + this.perPage;
+                    const paginatedMonitors = allMonitors.slice(startIndex, endIndex);
+                    
+                    console.log(`📊 "All" tab: Page ${this.page}, Total monitors: ${allMonitors.length}, Current page: ${paginatedMonitors.length} monitors (${startIndex}-${endIndex})`);
+                    
+                    const monitorIds = paginatedMonitors.map(monitor => monitor.id);
+                    console.log(`🎯 Monitor IDs for "all" tab page ${this.page}:`, monitorIds);
+                    return monitorIds;
+                } else {
+                    // For first page, return first page monitors
+                    const firstPageMonitors = allMonitors.slice(0, this.perPage);
+                    console.log(`📊 "All" tab: First page, returning ${firstPageMonitors.length} monitors`);
+                    
+                    const monitorIds = firstPageMonitors.map(monitor => monitor.id);
+                    console.log(`🎯 Monitor IDs for "all" tab first page:`, monitorIds);
+                    return monitorIds;
+                }
             }
 
-            // For specific group tab, get monitors from that group
+            // For specific group tab, get monitors from that group for current page only
             const selectedGroup = this.$root.publicGroupList.find(group => group.id == this.activeTab);
             if (selectedGroup && selectedGroup.monitorList && Array.isArray(selectedGroup.monitorList)) {
-                return selectedGroup.monitorList
+                const totalMonitorsInGroup = selectedGroup.monitorList.length;
+                
+                // Always apply pagination for specific group tabs
+                const startIndex = (this.page - 1) * this.perPage;
+                const endIndex = startIndex + this.perPage;
+                const paginatedMonitors = selectedGroup.monitorList.slice(startIndex, endIndex);
+                
+                console.log(`📋 Group "${selectedGroup.name}": Page ${this.page}, Total: ${totalMonitorsInGroup}, Current page: ${paginatedMonitors.length} monitors (${startIndex}-${endIndex})`);
+                
+                const monitorIds = paginatedMonitors
                     .filter(monitor => monitor && monitor.id)
                     .map(monitor => monitor.id);
+                
+                console.log(`🎯 Monitor IDs for group "${selectedGroup.name}" page ${this.page}:`, monitorIds);
+                return monitorIds;
             }
 
+            console.log(`❌ No group found for tab ID: ${this.activeTab}`);
             return [];
         },
 
@@ -1226,6 +1312,13 @@ export default {
 
                 const url = `/api/status-page/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
                 console.log('Loading paginated data from:', url);
+                console.log('Request parameters:', {
+                    noPagination,
+                    group: this.activeTab !== 'all' ? this.activeTab : 'all',
+                    page: this.page,
+                    limit: this.perPage,
+                    interval: this.config.autoRefreshInterval
+                });
                 
                 const response = await axios.get(url);
                 
@@ -1279,8 +1372,12 @@ export default {
                         currentPage: this.page,
                         activeTab: this.activeTab,
                         publicGroupListLength: this.$root.publicGroupList ? this.$root.publicGroupList.length : 0,
-                        loading: this.loading
+                        loading: this.loading,
+                        perPage: this.perPage
                     });
+                    
+                    // Note: Heartbeat update will be handled by the page watch
+                    console.log('Status page data loaded, heartbeat update will be handled by page watch');
                 }
                 
                 return Promise.resolve();
@@ -1381,6 +1478,11 @@ export default {
             
             console.log('Switching tab from', this.activeTab, 'to', tabId);
             console.log('Before tab switch - perPage:', this.perPage, 'page:', this.page);
+            console.log('Current pagination state:', {
+                totalRecords: this.totalRecords,
+                showPagination: this.showPagination,
+                pagination: this.pagination
+            });
             
             this.activeTab = tabId;
             this.page = 1; // Reset to first page when switching tabs
@@ -1400,6 +1502,13 @@ export default {
                 console.log('Tab switch complete for tab:', tabId);
                 console.log('After tab switch - totalRecords:', this.totalRecords, 'paginatedData length:', this.paginatedData.length);
                 console.log('After tab switch - perPage:', this.perPage, 'page:', this.page);
+                console.log('Tab switch pagination state:', {
+                    totalRecords: this.totalRecords,
+                    paginatedDataLength: this.paginatedData.length,
+                    perPage: this.perPage,
+                    page: this.page,
+                    showPagination: this.showPagination
+                });
                 
                 // Force pagination component to update
                 this.$nextTick(() => {
@@ -1425,10 +1534,38 @@ export default {
                         
                         // Trigger heartbeat API update for the new tab
                         this.updateHeartbeatList();
-                        console.log('Heartbeat API triggered for new tab:', tabId);
+                        console.log('Heartbeat API triggered for new tab:', tabId, 'page:', this.page);
                     });
                 });
             });
+        },
+
+        /**
+         * Force heartbeat update with immediate effect
+         * Used for critical pagination and tab changes
+         * @returns {void}
+         */
+        forceHeartbeatUpdate() {
+            console.log('🚨 Force heartbeat update triggered', {
+                page: this.page,
+                activeTab: this.activeTab,
+                timestamp: new Date().toISOString(),
+                reason: 'force_update'
+            });
+            
+            // Clear any existing heartbeat update delays
+            if (this.heartbeatUpdateTimeout) {
+                clearTimeout(this.heartbeatUpdateTimeout);
+            }
+            
+            // Immediately update heartbeat
+            this.updateHeartbeatList();
+            
+            // Schedule another update after a short delay to ensure data consistency
+            this.heartbeatUpdateTimeout = setTimeout(() => {
+                console.log('🔄 Follow-up heartbeat update after force update');
+                this.updateHeartbeatList();
+            }, 500);
         },
 
         /**
@@ -1445,6 +1582,14 @@ export default {
          * @returns {void}
          */
         updateHeartbeatList() {
+            console.log('💓 updateHeartbeatList triggered - Start', {
+                page: this.page,
+                activeTab: this.activeTab,
+                editMode: this.editMode,
+                timestamp: new Date().toISOString()
+            });
+            
+            
             // If editMode, it will use the data from websocket.
             if (! this.editMode) {
                 // Build API parameters including interval time
@@ -1461,7 +1606,7 @@ export default {
                 
                 const url = `/api/status-page/heartbeat/${this.slug}${params.toString() ? '?' + params.toString() : ''}`;
                 
-                console.log('🔄 Updating heartbeat list for tab:', this.activeTab);
+                console.log('🔄 Updating heartbeat list for tab:', this.activeTab, 'page:', this.page);
                 console.log('📊 Monitor IDs:', currentTabMonitorIds);
                 console.log('🌐 API URL:', url);
                 
@@ -1472,7 +1617,9 @@ export default {
                         console.log('✅ Heartbeat data received:', {
                             heartbeatListKeys: Object.keys(heartbeatList || {}),
                             uptimeListKeys: Object.keys(uptimeList || {}),
-                            totalMonitors: currentTabMonitorIds ? currentTabMonitorIds.length : 'all'
+                            totalMonitors: currentTabMonitorIds ? currentTabMonitorIds.length : 'all',
+                            currentPage: this.page,
+                            currentTab: this.activeTab
                         });
 
                         // Update root heartbeat data
@@ -1511,7 +1658,7 @@ export default {
                                 heartbeatList: heartbeatList
                             });
                             
-                            console.log('🎯 Heartbeat data update complete for tab:', this.activeTab);
+                            console.log('🎯 Heartbeat data update complete for tab:', this.activeTab, 'page:', this.page);
                         });
                     }
                 }).catch((error) => {
@@ -1526,17 +1673,25 @@ export default {
          */
         updateUpdateTimer() {
             clearInterval(this.updateCountdown);
+            console.log('Setting up update timer for countdown display');
 
             this.updateCountdown = setInterval(() => {
                 if (this.lastUpdateTime && this.config && this.config.autoRefreshInterval) {
                     const countdown = dayjs.duration(this.lastUpdateTime.add(this.config.autoRefreshInterval, "seconds").add(10, "seconds").diff(dayjs()));
-                    if (countdown.as("seconds") < 0) {
-                        clearInterval(this.updateCountdown);
-                    } else {
-                        this.updateCountdownText = countdown.format("mm:ss");
-                    }
+                                    if (countdown.as("seconds") < 0) {
+                    clearInterval(this.updateCountdown);
+                    console.log('Update countdown expired, clearing interval');
+                } else {
+                    this.updateCountdownText = countdown.format("mm:ss");
+                }
                 } else {
                     clearInterval(this.updateCountdown);
+                    console.log('No auto-refresh interval configured, clearing update timer');
+                }
+                
+                // Log countdown status for debugging (only log every 10 seconds to avoid spam)
+                if (this.updateCountdownText && this.updateCountdownText.includes('00:')) {
+                    console.log(`Update countdown: ${this.updateCountdownText} remaining`);
                 }
             }, 1000);
         },
@@ -1611,7 +1766,7 @@ export default {
                     this.loadedData = true;
                     this.tabsInitialized = true;
                     
-                    console.log('Edit mode data loading complete');
+                    console.log('Edit mode data loading complete - no pagination mode');
                 }
                 
                 return Promise.resolve();
@@ -1650,6 +1805,7 @@ export default {
                         
                         // Reset to first group tab instead of 'all'
                         this.page = 1;
+                        console.log('Save complete, reset to page 1');
 
                         // Add some delay, so that the side menu animation would be better
                         let endTime = new Date();
