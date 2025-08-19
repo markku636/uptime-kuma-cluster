@@ -13,6 +13,7 @@ const {
 } = require("../util-server");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const rateLimit = require("express-rate-limit");
+const { reconcileMonitors } = require("../monitor-reconciler");
 const { body, validationResult } = require("express-validator");
 
 const router = express.Router();
@@ -26,6 +27,18 @@ const apiLimiter = rateLimit({
 
 // Apply rate limiting to all API routes
 router.use("/api/v1", apiLimiter);
+/**
+ * Trigger reconcile monitors on this node
+ */
+router.post("/api/v1/reconcile-monitors", authenticateToken, async (req, res) => {
+    try {
+        await reconcileMonitors();
+        res.json({ ok: true, msg: "Reconcile triggered" });
+    } catch (e) {
+        sendHttpError(res, e.message);
+    }
+});
+
 
 /**
  * @swagger

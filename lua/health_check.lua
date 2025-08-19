@@ -63,6 +63,140 @@ end
 -- 共享記憶體區域
 local health_checker = ngx.shared.health_checker
 
+-- 連接資料庫輔助函式
+local function db_connect()
+    local mysql = require "resty.mysql"
+    local db, err = mysql:new()
+    if not db then
+        ngx.log(ngx.ERR, "Failed to create MySQL connection: ", err)
+        return nil, err
+    end
+    db:set_timeout(5000)
+    local ok, err = db:connect(DB_CONFIG)
+    if not ok then
+        ngx.log(ngx.ERR, "Failed to connect to database: ", err)
+        return nil, err
+    end
+    return db
+end
+
+-- 取得線上節點（排除指定節點）
+local function get_online_nodes_except(exclude_node_id)
+    local db, err = db_connect()
+    if not db then
+        return nil, err
+    end
+    local sql = [[SELECT node_id FROM node WHERE status = 'online' AND node_id <> %s]]
+    local quoted = ngx.quote_sql_str(exclude_node_id)
+    local res, qerr = db:query(string.format(sql, quoted))
+    db:close()
+    if not res then
+        ngx.log(ngx.ERR, "Failed to query online nodes: ", qerr)
+        return nil, qerr
+    end
+    return res
+end
+
+-- 將指定節點上的監控平均分配到其他線上節點
+local function redistribute_monitors_from_node(failed_node_id)
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("開始重新分配節點 %s 的監控", failed_node_id)
+    end
+
+    -- 取得可用的目標節點
+    local targets, terr = get_online_nodes_except(failed_node_id)
+    if not targets then
+        return false, terr
+    end
+    if #targets == 0 then
+        ngx.log(ngx.WARN, "No online nodes to redistribute monitors to (failed node=", failed_node_id, ")")
+        return false, "no_targets"
+    end
+
+    local db, err = db_connect()
+    if not db then
+        return false, err
+    end
+
+    -- 查出需重新分配的監控（effective node = failed_node）
+    local failedQuoted = ngx.quote_sql_str(failed_node_id)
+    local select_sql = string.format([[ 
+        SELECT id FROM monitor 
+        WHERE assigned_node = %s 
+           OR (assigned_node IS NULL AND node_id = %s)
+        ORDER BY id
+    ]], failedQuoted, failedQuoted)
+
+    local monitors, qerr = db:query(select_sql)
+    if not monitors then
+        ngx.log(ngx.ERR, "Failed to query monitors for redistribution: ", qerr)
+        db:close()
+        return false, qerr
+    end
+
+    if #monitors == 0 then
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("節點 %s 沒有需要重新分配的監控", failed_node_id)
+        end
+        db:close()
+        return true
+    end
+
+    -- 平均分配（round-robin）
+    local target_count = #targets
+    local updated = 0
+    for idx, row in ipairs(monitors) do
+        local monitor_id = row.id
+        local target = targets[((idx - 1) % target_count) + 1]
+        local target_id = target.node_id
+        local update_sql = string.format("UPDATE monitor SET assigned_node = %s WHERE id = %d", ngx.quote_sql_str(target_id), monitor_id)
+        local ures, uerr = db:query(update_sql)
+        if not ures then
+            ngx.log(ngx.ERR, "Failed to update monitor ", monitor_id, " assigned_node: ", uerr)
+        else
+            updated = updated + 1
+        end
+    end
+
+    db:close()
+    ngx.log(ngx.INFO, "Redistributed ", updated, " monitors from node ", failed_node_id, " to ", target_count, " nodes")
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("共重新分配 %d 個監控（來源節點: %s，目標節點數: %d）", updated, failed_node_id, target_count)
+    end
+    return true
+end
+
+-- 將指定節點的監控還原回原節點（把 assigned_node 設為 NULL）
+local function revert_monitors_to_node(node_id)
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("開始還原節點 %s 的監控（assigned_node -> NULL）", node_id)
+    end
+
+    local db, err = db_connect()
+    if not db then
+        return false, err
+    end
+
+    local quoted = ngx.quote_sql_str(node_id)
+    local sql = string.format([[UPDATE monitor SET assigned_node = NULL WHERE assigned_node IS NOT NULL AND node_id = %s]], quoted)
+
+    local res, qerr = db:query(sql)
+    db:close()
+
+    if not res then
+        ngx.log(ngx.ERR, "Failed to revert monitors for node ", node_id, ": ", qerr)
+        return false, qerr
+    end
+
+    local affected = res.affected_rows or 0
+    ngx.log(ngx.INFO, "Reverted ", affected, " monitors back to original node ", node_id)
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("已將 %d 個監控還原至原節點（node_id=%s）", affected, node_id)
+    end
+
+    return true, affected
+end
+
 --[[
   啟動Emmy調試器
   @param conf table - 調試配置對象
@@ -340,6 +474,37 @@ function _M.run_health_check()
                 if current_status ~= "online" then
                     _M.update_node_status(node_id, "online", true)
                 end
+                -- 重置連續失敗計數，並刪除重新分配旗標（讓下次真的失敗時可再次觸發重新分配）
+                local fail_key = "consec_fail:" .. node_id
+                health_checker:set(fail_key, 0)
+                local reassigned_key = "reassigned:" .. node_id
+                health_checker:delete(reassigned_key)
+
+                -- 增加連續成功計數
+                local success_key = "consec_success:" .. node_id
+                local current_success = health_checker:incr(success_key, 1, 0)
+                ngx.log(ngx.INFO, "Node ", node_id, " consecutive healthy count = ", current_success)
+                if DEBUG_CONFIG.enabled then
+                    health_check_debug_log("節點 %s 連續成功次數: %d", node_id, current_success)
+                end
+
+                -- 若連續成功達 3 次且尚未執行還原，將 assigned_node 還原為 NULL，讓原節點接手執行
+                if current_success >= 3 then
+                    local reverted_key = "reverted:" .. node_id
+                    local was_reverted = health_checker:get(reverted_key)
+                    if not was_reverted then
+                        ngx.log(ngx.INFO, "Node ", node_id, " healthy 3 times, start reverting its monitors to original node")
+                        local ok, affected_or_err = revert_monitors_to_node(node_id)
+                        if ok then
+                            health_checker:set(reverted_key, 1)
+                            ngx.log(ngx.INFO, "Revert finished for node ", node_id, ", affected monitors = ", affected_or_err or 0)
+                        else
+                            ngx.log(ngx.ERR, "Failed to revert monitors for node ", node_id, ": ", affected_or_err or "unknown error")
+                        end
+                    else
+                        ngx.log(ngx.INFO, "Skip revert for node ", node_id, ": already reverted in this healthy streak")
+                    end
+                end
                 success_count = success_count + 1
                 if DEBUG_CONFIG.enabled then
                     health_check_debug_log("節點 %s 健康檢查成功", node_id)
@@ -349,6 +514,31 @@ function _M.run_health_check()
                 if current_status ~= "offline" then
                     _M.update_node_status(node_id, "offline", false)
                 end
+                -- 增加連續失敗計數
+                local fail_key = "consec_fail:" .. node_id
+                local current_fail = health_checker:incr(fail_key, 1, 0)
+                if DEBUG_CONFIG.enabled then
+                    health_check_debug_log("節點 %s 連續失敗次數: %d", node_id, current_fail)
+                end
+                -- 若達到三次失敗且尚未重新分配，進行監控重新分配
+                if current_fail >= 3 then
+                    local reassigned_key = "reassigned:" .. node_id
+                    local was_reassigned = health_checker:get(reassigned_key)
+                    if not was_reassigned then
+                        ngx.log(ngx.WARN, "Node ", node_id, " failed 3 times, start redistributing its monitors")
+                        local ok, rerr = redistribute_monitors_from_node(node_id)
+                        if ok then
+                            health_checker:set(reassigned_key, 1)
+                        else
+                            ngx.log(ngx.ERR, "Failed to redistribute monitors for node ", node_id, ": ", rerr or "unknown error")
+                        end
+                    end
+                end
+                -- 一旦發生失敗，重置連續成功計數並清除已還原旗標（下次恢復需再次達到3次成功才會還原）
+                local success_key = "consec_success:" .. node_id
+                health_checker:set(success_key, 0)
+                local reverted_key = "reverted:" .. node_id
+                health_checker:delete(reverted_key)
                 fail_count = fail_count + 1
                 if DEBUG_CONFIG.enabled then
                     health_check_debug_log("節點 %s 健康檢查失敗，原因: %s", node_id, reason)

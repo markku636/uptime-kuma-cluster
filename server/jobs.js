@@ -1,4 +1,5 @@
 const { UptimeKumaServer } = require("./uptime-kuma-server");
+const { reconcileMonitors } = require("./monitor-reconciler");
 const { clearOldData } = require("./jobs/clear-old-data");
 const { incrementalVacuum } = require("./jobs/incremental-vacuum");
 const Cron = require("croner");
@@ -14,6 +15,19 @@ const jobs = [
         name: "incremental-vacuum",
         interval: "*/5 * * * *",
         jobFunc: incrementalVacuum,
+        croner: null,
+    }
+    ,
+    {
+        name: "reconcile-monitors",
+        interval: "*/1 * * * *",
+        jobFunc: async () => {
+            try {
+                await reconcileMonitors();
+            } catch (e) {
+                // Avoid throwing from job
+            }
+        },
         croner: null,
     }
 ];

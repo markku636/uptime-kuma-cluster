@@ -22,7 +22,7 @@
                             </span>
                             {{ monitor.name }}
                             
-                            <!-- Node indicator (only show when viewing all nodes) -->
+                            <!-- 節點標示（僅在檢視所有節點時顯示） -->
                             <span v-if="shouldShowNodeInfo" class="node-badge">
                                 <small>
                                     <font-awesome-icon icon="server" />

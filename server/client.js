@@ -154,7 +154,7 @@ async function sendInfo(socket, hideVersion = false) {
         dbType = Database.dbConfig.type;
     }
 
-    // Load balancing - get current node ID and info
+    // 負載平衡 - 取得當前節點 ID 與資訊
     const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
     let currentNode = null;
     if (currentNodeId) {

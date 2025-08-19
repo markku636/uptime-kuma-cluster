@@ -359,7 +359,7 @@ export default {
                 }
             }
 
-            // filter by effective node (assigned_node overrides node_id) when not showing all nodes
+            // 依「有效節點」過濾（assigned_node 優先於 node_id），當未顯示所有節點時生效
             let nodeMatch = true;
             if (this.$root.info && this.$root.info.currentNodeId && !this.showAllNodes) {
                 const effectiveNode = monitor.assigned_node || monitor.node_id || null;

@@ -256,21 +256,21 @@ class UptimeKumaServer {
             queryParams.push(monitorID);
         }
 
-        // Load balancing: filter monitors by effective node (assigned_node overrides node_id)
+        // 負載平衡：依據「有效節點」過濾監控（assigned_node 優先於 node_id）
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
         if (currentNodeId) {
-            // Check if this node exists in database
+            // 檢查此節點是否存在於資料庫
             const Node = require("./model/node");
             const currentNode = await Node.getByNodeId(currentNodeId);
             if (currentNode) {
-                log.debug("monitor", `[getMonitorJSONList] Filtering monitors for node: ${currentNodeId} (${currentNode.node_name})`);
+                log.debug("monitor", `[getMonitorJSONList] 依節點過濾監控: ${currentNodeId} (${currentNode.node_name})`);
             } else {
-                log.debug("monitor", `[getMonitorJSONList] Filtering monitors for node: ${currentNodeId} (not in database)`);
+                log.debug("monitor", `[getMonitorJSONList] 依節點過濾監控: ${currentNodeId}（節點不存在於資料庫）`);
             }
             query += "AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
             queryParams.push(currentNodeId, currentNodeId);
         } else {
-            log.debug("monitor", "[getMonitorJSONList] No node ID specified, returning all monitors");
+            log.debug("monitor", "[getMonitorJSONList] 未指定節點 ID，回傳所有監控");
         }
 
         let monitorList = await R.find("monitor", query + "ORDER BY weight DESC, name", queryParams);

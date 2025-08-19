@@ -114,7 +114,7 @@ if (hostname) {
     log.info("server", "Custom hostname: " + hostname);
 }
 
-// Load balancing - Get current node ID from environment variable
+// 負載平衡 - 從環境變數取得當前節點 ID
 const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
 
 if (currentNodeId) {
@@ -1897,7 +1897,7 @@ async function startMonitors() {
     let whereClause = " active = 1 ";
     let params = [];
     
-    // Load balancing: filter monitors by effective node (assigned_node overrides node_id)
+    // 負載平衡：依據「有效節點」過濾監控（assigned_node 優先於 node_id）
     if (currentNodeId) {
         whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
         params.push(currentNodeId, currentNodeId);
@@ -1923,6 +1923,61 @@ async function startMonitors() {
         }
         // Give some delays, so all monitors won't make request at the same moment when just start the server.
         await sleep(getRandomInt(300, 1000));
+    }
+}
+
+/**
+ * Reconcile running monitors with DB assignments for the current node.
+ * - Starts monitors newly assigned to this node
+ * - Stops monitors that are no longer assigned to this node
+ * Runs without user context (same as startMonitors)
+ */
+async function reconcileMonitors() {
+    try {
+        let whereClause = " active = 1 ";
+        let params = [];
+
+        if (currentNodeId) {
+            whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            params.push(currentNodeId, currentNodeId);
+        }
+
+        const desiredList = await R.find("monitor", whereClause, params);
+
+        const desiredIds = new Set(desiredList.map((m) => m.id));
+        const runningIds = new Set(Object.keys(server.monitorList).map((k) => parseInt(k)));
+
+        // Start newly assigned monitors
+        for (const monitor of desiredList) {
+            if (!runningIds.has(monitor.id)) {
+                try {
+                    log.info("server", `Reconciling: starting monitor ${monitor.name} (ID: ${monitor.id})`);
+                    server.monitorList[monitor.id] = monitor;
+                    await monitor.start(io);
+                    await sleep(getRandomInt(100, 300));
+                } catch (e) {
+                    log.error("monitor", e);
+                }
+            }
+        }
+
+        // Stop monitors that no longer belong to this node
+        for (const idStr of Object.keys(server.monitorList)) {
+            const id = parseInt(idStr);
+            if (!desiredIds.has(id)) {
+                try {
+                    const monitor = server.monitorList[id];
+                    log.info("server", `Reconciling: stopping monitor ${monitor.name} (ID: ${id})`);
+                    await monitor.stop();
+                    delete server.monitorList[id];
+                    await sleep(getRandomInt(50, 150));
+                } catch (e) {
+                    log.error("monitor", e);
+                }
+            }
+        }
+    } catch (e) {
+        log.error("server", `Reconcile monitors failed: ${e.message}`);
     }
 }
 

@@ -796,7 +796,24 @@
                                 <input id="description" v-model="monitor.description" type="text" class="form-control">
                             </div>
 
-                            <!-- Assigned Node (override). Default is node_id, this overrides for failover/load balancing) -->
+                            <!-- 預設節點（node_id）— 排在「指派節點」之上顯示 -->
+                            <div class="my-3">
+                                <label for="default-node" class="form-label">{{ $t('Default Node') }}</label>
+                                <ActionSelect
+                                    id="default-node"
+                                    v-model="monitor.node_id"
+                                    :action-aria-label="$t('openModalTo', 'setup a new node')"
+                                    :options="nodeOptionsList"
+                                    :icon="'plus'"
+                                    :action="() => $router.push('/settings/nodes')"
+                                    :placeholder="$t('assignedNodePlaceholder')"
+                                />
+                                <div class="form-text">
+                                    {{ $t('defaultNodeDescription') }}
+                                </div>
+                            </div>
+
+                            <!-- 指派節點（覆寫）。預設使用 node_id；此欄位用於容錯/負載平衡覆寫 -->
                             
                             <div class="my-3">
                                 <label for="assigned-node" class="form-label">{{ $t("Assigned Node") }}</label>
@@ -811,23 +828,6 @@
                                 />
                                 <div class="form-text">
                                     {{ $t("assignedNodeDescription") }}
-                                </div>
-                            </div>
-
-                            <!-- Default Node (node_id) - Moved above assigned node -->
-                            <div class="my-3">
-                                <label for="default-node" class="form-label">{{ $t('Default Node') }}</label>
-                                <ActionSelect
-                                    id="default-node"
-                                    v-model="monitor.node_id"
-                                    :action-aria-label="$t('openModalTo', 'setup a new node')"
-                                    :options="nodeOptionsList"
-                                    :icon="'plus'"
-                                    :action="() => $router.push('/settings/nodes')"
-                                    :placeholder="$t('assignedNodePlaceholder')"
-                                />
-                                <div class="form-text">
-                                    {{ $t('defaultNodeDescription') }}
                                 </div>
                             </div>
 
