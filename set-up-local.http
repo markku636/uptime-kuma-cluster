@@ -31,36 +31,7 @@ Content-Type: application/json
   "method": "GET",
   "node_id": "node1"
 }
-
-### 建立 Ping 監控器
-POST {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "示例 Ping 監控",
-  "type": "ping",
-  "url": "https://example.com",
-  "hostname": "8.8.8.8",
-  "interval": 60,
-  "active": true,
-  "node_id": "node1"
-}
-
-### 建立 DNS 監控器
-POST {{baseUrl}}/api/v1/monitors
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "name": "示例 DNS 監控",
-  "type": "dns",
-  "url": "https://example.com",
-  "hostname": "google.com",
-  "interval": 60,
-  "active": true
-}
-
+// node id 是後台的節點名稱，分片用途，一需要寫死 node1，不然服務不會被nod1 執行
 ### 更新 monitor (ID = 1)
 PUT {{baseUrl}}/api/v1/monitors/1
 Authorization: {{apiKey}}
@@ -84,9 +55,7 @@ Content-Type: application/json
 DELETE {{baseUrl}}/api/v1/monitors/1
 Authorization: {{apiKey}}
 
-### 取得 monitor 心跳資料 (ID = 1)
-GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
-Authorization: {{apiKey}}
+
 
 ### 取得所有狀態頁面
 GET {{baseUrl}}/api/v1/status-pages
@@ -99,22 +68,19 @@ Content-Type: application/json
 
 {
   "title": "REST API 測試狀態頁面",
-  "slug": "full-test-page",
+  "slug": "full-test-page-1",
   "description": "測試頁面",
-  "published": true
-}
-
-### 更新狀態頁面 (基本欄位)
-PUT {{baseUrl}}/api/v1/status-pages/full-test-page
-Authorization: {{apiKey}}
-Content-Type: application/json
-
-{
-  "title": "更新後的狀態頁面標題",
-  "description": "更新後的狀態頁面描述",
-  "theme": "dark",
-  "autoRefreshInterval": 180,
-  "published": false
+  "autoRefreshInterval": 120,
+  "published": true,
+  "publicGroupList": [
+    {
+      "name": "服務群組",
+      "monitorList": [
+        { "id": 1, "sendUrl": false },
+        { "id": 2, "sendUrl": false }
+      ]
+    }
+  ]
 }
 
 ### 更新狀態頁面 publicGroupList
@@ -123,13 +89,23 @@ Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
+  "title": "REST API 測試狀態頁面",
+  "slug": "full-test-page",
+  "description": "測試頁面",
+  "autoRefreshInterval": 120,
+  "published": true,
   "publicGroupList": [
     {
       "name": "服務群組",
       "monitorList": [
-        { "id": 1, "sendUrl": true },
-        { "id": 2, "sendUrl": false, "url": "https://custom.example.com" }
+        { "id": 1, "sendUrl": false },
+        { "id": 2, "sendUrl": false }
       ]
     }
   ]
 }
+// 更新狀態頁面 publicGroupList ，id 是後台的監控器id，sendUrl 是是否發送url，false 是只發送狀態，true 是發送url和狀態
+
+### 取得 monitor 心跳資料 (ID = 1)
+GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
+Authorization: {{apiKey}}
