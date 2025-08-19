@@ -34,23 +34,21 @@ class Node extends BeanModel {
             let node = await Node.getByNodeId(nodeId);
             
             if (node) {
-                // Update existing node
+                // Update existing node (avoid R.store when primary key is node_id)
                 log.debug("node", `Updating existing node: ${nodeId} (${nodeName})`);
-                node.node_name = nodeName;
-                node.ip = ip;
-                node.modified_date = R.isoDateTime();
-                node.status = "online"; // 確保狀態為在線
-                node.last_seen = R.isoDateTime();
-                
+                const now = R.isoDateTime();
+                await R.exec(
+                    "UPDATE node SET node_name = ?, ip = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
+                    [ nodeName, ip, now, "online", now, nodeId ]
+                );
+
                 // Handle primary node setting
                 const currentlyPrimary = !!(node.is_primary || node.is_primary === 1);
                 if (isPrimary && !currentlyPrimary) {
                     await Node.setPrimaryNode(nodeId);
-                    return await Node.getByNodeId(nodeId); // Reload to get updated data
-                } else if (!isPrimary) {
-                    node.is_primary = 0; // Use 0 for MariaDB TINYINT
+                } else if (!isPrimary && currentlyPrimary) {
+                    await R.exec("UPDATE node SET is_primary = 0, modified_date = ? WHERE node_id = ?", [ now, nodeId ]);
                 }
-                await R.store(node);
                 log.info("node", `Updated node: ${nodeId} (${nodeName})`);
             } else {
                 // Create new node
@@ -139,24 +137,23 @@ class Node extends BeanModel {
                     const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
                     const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
                     
-                    // 只更新必要的信息，不改變主節點狀態
-                    existingNode.node_name = nodeName;
-                    existingNode.ip = nodeIp;
-                    existingNode.modified_date = R.isoDateTime();
-                    existingNode.status = "online"; // 標記為在線
-                    existingNode.last_seen = R.isoDateTime();
-                    
-                    await R.store(existingNode);
-                    log.info("node", `Updated existing node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
+                    // 只更新必要的信息，不改變主節點狀態（避免 R.store 可能觸發 INSERT）
+                    const now = R.isoDateTime();
+                    await R.exec(
+                        "UPDATE node SET node_name = ?, ip = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
+                        [ nodeName, nodeIp, now, "online", now, currentNodeId ]
+                    );
+                    log.info("node", `Updated existing node from env: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
                     return;
                 }
                 
                 // 節點不存在，創建新節點
                 const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
                 const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
+                const isPrimary = (process.env.UPTIME_KUMA_PRIMARY === "1" || process.env.UPTIME_KUMA_PRIMARY === "true");
                 
-                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
-                await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, false);
+                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}${isPrimary ? " [primary]" : ""}`);
+                await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, isPrimary);
                 
             } catch (error) {
                 log.error("node", `Failed to initialize node ${currentNodeId}: ${error.message}`);
@@ -190,9 +187,7 @@ class Node extends BeanModel {
         // Set the specified node as primary
         const node = await Node.getByNodeId(nodeId);
         if (node) {
-            node.is_primary = 1; // Use 1 for MariaDB TINYINT
-            node.modified_date = R.isoDateTime();
-            await R.store(node);
+            await R.exec("UPDATE node SET is_primary = 1, modified_date = ? WHERE node_id = ?", [ R.isoDateTime(), nodeId ]);
             log.info("node", `Set node as primary: ${nodeId} (${node.node_name})`);
         }
     }

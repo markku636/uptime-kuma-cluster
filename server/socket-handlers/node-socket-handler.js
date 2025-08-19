@@ -79,48 +79,16 @@ module.exports.nodeSocketHandler = (socket) => {
             const { id, nodeId, nodeName, ip, isPrimary } = nodeData;
 
             // Validate required fields
-            if (!id || !nodeId || !nodeName) {
-                throw new Error("ID, Node ID and Node Name are required");
+            // Historically this endpoint expected a numeric `id`, but the
+            // database uses `node_id` as the primary key. Use `nodeId` as the
+            // source of truth and only require `nodeId` and `nodeName`.
+            if (!nodeId || !nodeName) {
+                throw new Error("Node ID and Node Name are required");
             }
 
             // Load existing node
-            const node = await R.load("node", id);
-            if (!node.id) {
-                throw new Error("Node not found");
-            }
-
-            // Check if new node ID conflicts with another node
-            if (node.node_id !== nodeId) {
-                const existingNode = await Node.getByNodeId(nodeId);
-                if (existingNode && existingNode.id !== id) {
-                    throw new Error("Node ID already exists");
-                }
-            }
-
-            // Update node basic info
-            node.node_id = nodeId;
-            node.node_name = nodeName;
-            node.ip = ip;
-            node.modified_date = R.isoDateTime();
-
-            // Handle primary node setting
-            // Convert is_primary to boolean for comparison (MariaDB stores as tinyint)
-            const currentlyPrimary = !!(node.is_primary || node.is_primary === 1);
-            
-            if (isPrimary && !currentlyPrimary) {
-                // Setting this node as primary, clear others first
-                await Node.clearAllPrimaryFlags();
-                node.is_primary = 1; // Use 1 for MariaDB TINYINT
-            } else if (!isPrimary && currentlyPrimary) {
-                // Removing primary status from this node
-                node.is_primary = 0; // Use 0 for MariaDB TINYINT
-            } else if (isPrimary && currentlyPrimary) {
-                // Already primary, just ensure this is the only primary
-                await Node.clearAllPrimaryFlags();
-                node.is_primary = 1; // Use 1 for MariaDB TINYINT
-            }
-
-            await R.store(node);
+            // Use model method to handle update consistently (and avoid duplicate inserts)
+            await Node.createOrUpdate(nodeId, nodeName, ip, !!isPrimary);
 
             log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
@@ -130,7 +98,7 @@ module.exports.nodeSocketHandler = (socket) => {
             callback({
                 ok: true,
                 msg: "Node updated successfully",
-                node: node.toJSON(),
+                node: (await Node.getByNodeId(nodeId)).toJSON(),
             });
 
         } catch (e) {

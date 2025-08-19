@@ -1,436 +1,509 @@
--- lua/health_check.lua - OpenResty 健康檢查、故障檢測和故障轉移模組
-local cjson = require "cjson"
-local mysql = require "resty.mysql"
-local http = require "resty.http"
-
--- 共享記憶體區域
-local health_checker = ngx.shared.health_checker
-local fault_detector = ngx.shared.fault_detector
-
--- 配置參數
-local CONFIG = {
-    heartbeat_interval = 60,        -- 心跳間隔（秒）
-    health_check_interval = 60,     -- 健康檢查間隔（秒）
-    fault_scan_interval = 10,       -- 故障掃描間隔（秒）
-    failure_threshold = 3,          -- 失敗閾值（次數）
-    failure_timeout = 120,          -- 失敗超時（秒）
-    recovery_timeout = 300          -- 恢復超時（秒）
-}
+local _M = {}
 
 -- 資料庫連接配置
-local db_config = {
+local DB_CONFIG = {
     host = os.getenv("DB_HOST") or "mariadb",
-    port = os.getenv("DB_PORT") or 3306,
+    port = tonumber(os.getenv("DB_PORT")) or 3306,
     user = os.getenv("DB_USER") or "kuma",
     password = os.getenv("DB_PASSWORD") or "kuma_pass",
     database = os.getenv("DB_NAME") or "kuma"
 }
 
--- 獲取資料庫連接
-local function get_db_connection()
-    local db, err = mysql:new()
-    if not db then
-        ngx.log(ngx.ERR, "創建 MySQL 連接失敗: ", err)
-        return nil
+-- 調試配置
+local DEBUG_CONFIG = {
+    enabled = os.getenv("EMMY_DEBUG_ENABLED") == "true",
+    host = os.getenv("EMMY_DEBUG_HOST") or "0.0.0.0",
+    port = tonumber(os.getenv("EMMY_DEBUG_PORT")) or 9966,
+    log_level = os.getenv("DEBUG_LOG_LEVEL") or "INFO"
+}
+
+-- 調試日誌分類函數
+local function debug_log(category, level, message, ...)
+    if not DEBUG_CONFIG.enabled then
+        return
     end
     
-    db:set_timeout(5000)
+    local formatted_message = string.format(message, ...)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
     
-    local ok, err = db:connect(db_config)
-    if not ok then
-        ngx.log(ngx.ERR, "連接資料庫失敗: ", err)
-        return nil
+    -- 根據類別選擇不同的日誌格式
+    if category == "HEALTH_CHECK" then
+        ngx.log(ngx.DEBUG, "🔍 [HEALTH_CHECK] ", formatted_message)
+    elseif category == "DATABASE" then
+        ngx.log(ngx.DEBUG, "🗄️ [DATABASE] ", formatted_message)
+    elseif category == "NETWORK" then
+        ngx.log(ngx.DEBUG, "🌐 [NETWORK] ", formatted_message)
+    elseif category == "SYSTEM" then
+        ngx.log(ngx.DEBUG, "⚙️ [SYSTEM] ", formatted_message)
+    else
+        ngx.log(ngx.DEBUG, "🔍 [DEBUG] ", formatted_message)
     end
-    
-    return db
 end
 
--- 發送節點心跳
-local function send_heartbeat(node_id)
-    local db = get_db_connection()
-    if not db then
+-- 健康檢查調試日誌
+local function health_check_debug_log(message, ...)
+    debug_log("HEALTH_CHECK", "DEBUG", message, ...)
+end
+
+-- 資料庫調試日誌
+local function database_debug_log(message, ...)
+    debug_log("DATABASE", "DEBUG", message, ...)
+end
+
+-- 網路調試日誌
+local function network_debug_log(message, ...)
+    debug_log("NETWORK", "DEBUG", message, ...)
+end
+
+-- 系統調試日誌
+local function system_debug_log(message, ...)
+    debug_log("SYSTEM", "DEBUG", message, ...)
+end
+
+-- 共享記憶體區域
+local health_checker = ngx.shared.health_checker
+
+--[[
+  啟動Emmy調試器
+  @param conf table - 調試配置對象
+]]
+local function start_emmy_debugger(conf)
+    ngx.log(ngx.NOTICE, "🔧 Debug模式已啟用，嘗試啟動Emmy debugger...")
+    
+    local success, dbg = pcall(require, "emmy_core")
+    if not success then
+        ngx.log(ngx.ERR, "❌ Emmy debugger載入失敗: ", dbg)
+        ngx.log(ngx.ERR, "請確認emmy_core模組是否已正確安裝")
         return false
     end
     
-    local current_time = os.time()
-    local ip = os.getenv("UPTIME_KUMA_NODE_IP") or "127.0.0.1"
+    ngx.log(ngx.NOTICE, "✅ Emmy debugger模組載入成功")
     
-    -- 更新或插入節點狀態
-    local upsert_sql = [[
-        INSERT INTO node (node_id, ip, status, last_heartbeat, created_at, updated_at) 
-        VALUES (?, ?, 'online', ?, NOW(), NOW())
-        ON DUPLICATE KEY UPDATE 
-            ip = VALUES(ip),
-            status = 'online',
-            last_heartbeat = VALUES(last_heartbeat),
-            updated_at = NOW()
-    ]]
+    -- 嘗試啟動TCP監聽
+    local listen_success, listen_err = pcall(function()
+        dbg.tcpListen(conf.host, conf.port)
+        ngx.log(ngx.NOTICE, "🔗 Emmy debugger TCP監聽已啟動 (", conf.host, ":", conf.port, ")")
+    end)
     
-    local ok, err = db:query(upsert_sql, {node_id, ip, current_time})
-    if not ok then
-        ngx.log(ngx.ERR, "更新節點心跳失敗: ", err)
-        db:close()
+    if not listen_success then
+        ngx.log(ngx.ERR, "❌ TCP監聽啟動失敗: ", listen_err)
         return false
     end
     
-    -- 更新共享記憶體中的最後心跳時間
-    health_checker:set("last_heartbeat", current_time)
-    health_checker:set("heartbeat_count", (health_checker:get("heartbeat_count") or 0) + 1)
+    -- 等待IDE連接（設置超時避免無限等待）
+    ngx.log(ngx.NOTICE, "⏳ 等待IDE連接... (請在你的IDE中連接到debugger)")
     
-    ngx.log(ngx.DEBUG, "節點心跳已發送: ", node_id, " (", current_time, ")")
+    local wait_success, wait_err = pcall(function()
+        dbg.waitIDE()
+        ngx.log(ngx.NOTICE, "🎯 IDE已連接，設置斷點")
+        dbg.breakHere()
+        ngx.log(ngx.NOTICE, "🚀 已執行breakHere()，debugging開始")
+    end)
     
-    db:close()
+    if not wait_success then
+        ngx.log(ngx.ERR, "❌ IDE等待或斷點設置失敗: ", wait_err)
+        return false
+    end
+    
     return true
 end
 
--- 主動健康檢查節點
-local function perform_health_check(node_id, node_ip)
+-- 初始化健康檢查器
+function _M.init()
+    if not health_checker then
+        ngx.log(ngx.ERR, "health_checker shared dict not found")
+        return false
+    end
+    
+    -- 初始化計數器
+    health_checker:set("check_count", 0)
+    health_checker:set("last_check", 0)
+    health_checker:set("success_count", 0)
+    health_checker:set("fail_count", 0)
+    
+    ngx.log(ngx.INFO, "Health checker initialized")
+    
+    -- 注意：調試器啟動已移到 init_worker_by_lua 階段
+    if DEBUG_CONFIG.enabled then
+        ngx.log(ngx.INFO, "🔧 調試模式已啟用，調試器將在工作器階段啟動")
+    end
+    
+    return true
+end
+
+-- 檢查單個節點的健康狀態
+function _M.check_node_health(ip, port)
+    -- 調試斷點
+    if DEBUG_CONFIG.enabled then
+        network_debug_log("開始檢查節點 %s:%s", ip, (port or 3001))
+    end
+    
+    local http = require "resty.http"
     local httpc = http.new()
+    
+    -- 設定超時
     httpc:set_timeout(5000)
     
-    local url = string.format("http://%s:3001/health", node_ip)
-    local res, err = httpc:request_uri(url, {
-        method = "GET",
-        headers = {
-            ["User-Agent"] = "OpenResty-Health-Check"
-        }
+    -- 嘗試連接
+    local ok, err = httpc:connect(ip, port or 3001)
+    if not ok then
+        ngx.log(ngx.WARN, "Failed to connect to ", ip, ":", (port or 3001), ": ", err)
+        if DEBUG_CONFIG.enabled then
+            network_debug_log("連接失敗，錯誤: %s", err)
+        end
+        return false, "connection_failed"
+    end
+    
+    -- 發送 HTTP 請求
+    local res, err = httpc:request({
+        path = "/health",
+        method = "GET"
     })
     
     if not res then
-        ngx.log(ngx.WARN, "節點健康檢查失敗: ", node_id, " - ", (err or "connection failed"))
-        return false
+        ngx.log(ngx.WARN, "Failed to request from ", ip, ":", (port or 3001), ": ", err)
+        if DEBUG_CONFIG.enabled then
+            network_debug_log("請求失敗，錯誤: %s", err)
+        end
+        return false, "request_failed"
     end
     
-    local is_healthy = res.status == 200
-    ngx.log(ngx.DEBUG, "節點健康檢查: ", node_id, " - 狀態: ", res.status, " 健康: ", is_healthy)
-    
-    return is_healthy
+    -- 檢查狀態碼
+    if res.status == 200 then
+        ngx.log(ngx.INFO, "Node ", ip, ":", (port or 3001), " is healthy")
+        if DEBUG_CONFIG.enabled then
+            network_debug_log("節點健康，狀態碼: %s", res.status)
+        end
+        return true, "healthy"
+    else
+        ngx.log(ngx.WARN, "Node ", ip, ":", (port or 3001), " returned status: ", res.status)
+        if DEBUG_CONFIG.enabled then
+            network_debug_log("節點不健康，狀態碼: %s", res.status)
+        end
+        return false, "unhealthy"
+    end
 end
 
--- 掃描所有節點並執行故障檢測/恢復檢查
-local function scan_all_nodes()
-    local function list_nodes()
-        local db = get_db_connection()
-        if not db then
-            ngx.log(ngx.ERR, "創建 MySQL 連接失敗")
-            return {}
-        end
-
-        local sql = "SELECT node_id, ip, status FROM node"
-        local res, err = db:query(sql)
-        db:close()
-
-        if not res then
-            ngx.log(ngx.ERR, "查詢節點清單失敗: ", err)
-            return {}
-        end
-        return res
+-- 從資料庫獲取所有節點
+function _M.get_all_nodes()
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("開始從資料庫獲取節點列表")
     end
-
-    local summary = { checked = 0, failed = 0, recovered = 0 }
-    local nodes = list_nodes()
     
-    for _, n in ipairs(nodes) do
-        summary.checked = summary.checked + 1
-        
-        -- 檢查節點狀態變化
-        if n.status == 'offline' then
-            -- 檢查離線節點是否應該恢復
-            local recovery_start = fault_detector:get("recovery_start_" .. n.node_id) or 0
-            local current_time = os.time()
-            
-            if current_time - recovery_start >= CONFIG.recovery_timeout then
-                -- 標記為恢復中，同時更新 last_heartbeat
-                local db = get_db_connection()
-                if db then
-                    local sql = "UPDATE node SET status = 'recovering', last_heartbeat = ? WHERE node_id = ?"
-                    db:query(sql, {current_time, n.node_id})
-                    db:close()
-                    
-                    summary.recovered = summary.recovered + 1
-                    ngx.log(ngx.INFO, "節點 ", n.node_id, " 開始恢復流程，時間: ", current_time)
-                end
-            end
-        elseif n.status == 'recovering' then
-            -- 檢查恢復中的節點是否完成恢復
-            local recovery_start = fault_detector:get("recovery_start_" .. n.node_id) or 0
-            local current_time = os.time()
-            
-            if current_time - recovery_start >= CONFIG.recovery_timeout then
-                -- 標記為在線，同時更新 last_heartbeat
-                local db = get_db_connection()
-                if db then
-                    local sql = "UPDATE node SET status = 'online', last_heartbeat = ? WHERE node_id = ?"
-                    db:query(sql, {current_time, n.node_id})
-                    db:close()
-                    
-                    -- 清理恢復計時器
-                    fault_detector:set("recovery_start_" .. n.node_id, 0)
-                    
-                    ngx.log(ngx.INFO, "節點 ", n.node_id, " 恢復完成，時間: ", current_time)
-                end
-            end
-        end
-    end
-
-    if fault_detector then
-        fault_detector:set("last_cycle", ngx.time())
-        fault_detector:set("last_summary", cjson.encode(summary))
-        fault_detector:set("scan_count", (fault_detector:get("scan_count") or 0) + 1)
-    end
-
-    return summary
-end
-
--- 檢查節點狀態並處理故障轉移
-local function check_nodes_and_handle_failover()
-    local db = get_db_connection()
+    local mysql = require "resty.mysql"
+    local db, err = mysql:new()
+    
     if not db then
-        return false
+        ngx.log(ngx.ERR, "Failed to create MySQL connection: ", err)
+        if DEBUG_CONFIG.enabled then
+            ngx.log(ngx.DEBUG, "🔍 調試: MySQL連接創建失敗: ", err)
+        end
+        return nil, err
     end
     
-    local current_time = os.time()
+    -- 設定超時
+    db:set_timeout(5000)
     
-    -- 獲取所有節點
-    local nodes_sql = "SELECT node_id, ip, status, last_heartbeat FROM node ORDER BY node_id"
-    local nodes, err = db:query(nodes_sql)
+    -- 連接到資料庫
+    local ok, err = db:connect(DB_CONFIG)
+    if not ok then
+        ngx.log(ngx.ERR, "Failed to connect to database: ", err)
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("資料庫連接失敗: %s", err)
+        end
+        return nil, err
+    end
     
-    if not nodes then
-        ngx.log(ngx.ERR, "查詢節點失敗: ", err)
+    -- 查詢所有節點
+    local sql = "SELECT node_id, node_name, ip, status, last_seen FROM node"
+    local res, err = db:query(sql)
+    
+    if not res then
+        ngx.log(ngx.ERR, "Failed to query nodes: ", err)
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("節點查詢失敗: %s", err)
+        end
         db:close()
-        return false
-    end
-    
-    local offline_nodes = {}
-    local recovering_nodes = {}
-    
-    for _, node in ipairs(nodes) do
-        if node.status == 'online' then
-            -- 檢查在線節點的健康狀態
-            local is_healthy = perform_health_check(node.node_id, node.ip)
-            
-            if not is_healthy then
-                -- 增加失敗計數
-                local failure_key = "failure_count_" .. node.node_id
-                local failure_count = fault_detector:get(failure_key) or 0
-                failure_count = failure_count + 1
-                fault_detector:set(failure_key, failure_count)
-                
-                ngx.log(ngx.WARN, "節點健康檢查失敗: ", node.node_id, " 失敗次數: ", failure_count)
-                
-                -- 如果達到失敗閾值，標記為離線
-                if failure_count >= CONFIG.failure_threshold then
-                    local update_sql = "UPDATE node SET status = 'offline' WHERE node_id = ?"
-                    db:query(update_sql, {node.node_id})
-                    
-                    table.insert(offline_nodes, node)
-                    ngx.log(ngx.ERR, "節點標記為離線: ", node.node_id)
-                    
-                    -- 重置失敗計數
-                    fault_detector:set(failure_key, 0)
-                end
-            else
-                -- 健康檢查成功，重置失敗計數並更新 last_heartbeat
-                local failure_key = "failure_count_" .. node.node_id
-                fault_detector:set(failure_key, 0)
-                
-                -- 更新節點的 last_heartbeat
-                local heartbeat_sql = "UPDATE node SET last_heartbeat = ? WHERE node_id = ?"
-                local ok, err = db:query(heartbeat_sql, {current_time, node.node_id})
-                if not ok then
-                    ngx.log(ngx.ERR, "更新節點心跳失敗: ", node.node_id, " - ", (err or "unknown error"))
-                else
-                    ngx.log(ngx.DEBUG, "節點健康檢查成功，更新心跳: ", node.node_id, " 時間: ", current_time)
-                end
-            end
-        elseif node.status == 'offline' then
-            -- 檢查離線節點是否恢復
-            local is_healthy = perform_health_check(node.node_id, node.ip)
-            if is_healthy then
-                -- 更新節點狀態為恢復中，同時更新 last_heartbeat
-                local update_sql = "UPDATE node SET status = 'recovering', last_heartbeat = ? WHERE node_id = ?"
-                local ok, err = db:query(update_sql, {current_time, node.node_id})
-                if not ok then
-                    ngx.log(ngx.ERR, "更新節點恢復狀態失敗: ", node.node_id, " - ", (err or "unknown error"))
-                else
-                    table.insert(recovering_nodes, node)
-                    ngx.log(ngx.INFO, "節點開始恢復: ", node.node_id, " 時間: ", current_time)
-                end
-                
-                -- 設置恢復計時器
-                fault_detector:set("recovery_start_" .. node.node_id, current_time)
-            end
-        elseif node.status == 'recovering' then
-            -- 檢查恢復中的節點
-            local recovery_start = fault_detector:get("recovery_start_" .. node.node_id) or 0
-            if current_time - recovery_start >= CONFIG.recovery_timeout then
-                -- 更新節點狀態為在線，同時更新 last_heartbeat
-                local update_sql = "UPDATE node SET status = 'online', last_heartbeat = ? WHERE node_id = ?"
-                local ok, err = db:query(update_sql, {current_time, node.node_id})
-                if not ok then
-                    ngx.log(ngx.ERR, "更新節點在線狀態失敗: ", node.node_id, " - ", (err or "unknown error"))
-                else
-                    ngx.log(ngx.INFO, "節點恢復完成: ", node.node_id, " 時間: ", current_time)
-                end
-                
-                -- 清理恢復計時器
-                fault_detector:delete("recovery_start_" .. node.node_id)
-            end
-        end
-    end
-    
-    -- 處理故障轉移
-    if #offline_nodes > 0 then
-        for _, node in ipairs(offline_nodes) do
-            handle_node_failover(db, node.node_id)
-        end
-        
-        -- 更新故障轉移統計
-        health_checker:set("last_failover", current_time)
-        health_checker:set("failover_count", (health_checker:get("failover_count") or 0) + 1)
+        return nil, err
     end
     
     db:close()
+    
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("成功獲取 %d 個節點", #res)
+    end
+    
+    return res
+end
+
+-- 更新節點狀態
+function _M.update_node_status(node_id, status, is_online)
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("更新節點 %s 狀態為 %s", node_id, status)
+    end
+    
+    local mysql = require "resty.mysql"
+    local db, err = mysql:new()
+    
+    if not db then
+        ngx.log(ngx.ERR, "Failed to create MySQL connection: ", err)
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("MySQL連接創建失敗: %s", err)
+        end
+        return false, err
+    end
+    
+    -- 設定超時
+    db:set_timeout(5000)
+    
+    -- 連接到資料庫
+    local ok, err = db:connect(DB_CONFIG)
+    if not ok then
+        ngx.log(ngx.ERR, "Failed to connect to database: ", err)
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("資料庫連接失敗: %s", err)
+        end
+        return false, err
+    end
+    
+    -- 更新節點狀態
+    local current_time = os.date("%Y-%m-%d %H:%M:%S")
+    local sql = string.format([[
+        UPDATE node 
+        SET status = '%s', 
+            last_seen = '%s',
+            modified_date = NOW()
+        WHERE node_id = '%s'
+    ]], status, current_time, node_id)
+    
+    local res, err = db:query(sql)
+    
+    if not res then
+        ngx.log(ngx.ERR, "Failed to update node status: ", err)
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("狀態更新失敗: %s", err)
+        end
+        db:close()
+        return false, err
+    end
+    
+    db:close()
+    ngx.log(ngx.INFO, "Updated node ", node_id, " status to ", status)
+    
+    if DEBUG_CONFIG.enabled then
+        database_debug_log("節點狀態更新成功")
+    end
+    
     return true
 end
 
--- 處理節點故障轉移
-local function handle_node_failover(db, failed_node_id)
-    ngx.log(ngx.INFO, "處理節點故障轉移: ", failed_node_id)
+-- 執行健康檢查
+function _M.run_health_check()
+    local check_count = health_checker:incr("check_count", 1)
+    local current_time = os.time()
     
-    -- 獲取受影響的監控器
-    local affected_monitors_sql = "SELECT id, name FROM monitor WHERE assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)"
-    local affected_monitors, err = db:query(affected_monitors_sql, {failed_node_id, failed_node_id})
+    ngx.log(ngx.INFO, "Starting health check #", check_count)
     
-    if not affected_monitors or #affected_monitors == 0 then
-        ngx.log(ngx.INFO, "沒有需要轉移的監控器: ", failed_node_id)
-        return
+    if DEBUG_CONFIG.enabled then
+        health_check_debug_log("開始執行健康檢查 #%d", check_count)
     end
     
-    -- 獲取所有在線節點
-    local online_nodes_sql = "SELECT node_id FROM node WHERE status = 'online'"
-    local online_nodes, err = db:query(online_nodes_sql)
-    
-    if not online_nodes or #online_nodes == 0 then
-        ngx.log(ngx.ERR, "沒有可用的在線節點進行故障轉移！")
-        -- 取消分配監控器
-        for _, monitor in ipairs(affected_monitors) do
-            local unassign_sql = "UPDATE monitor SET assigned_node = NULL WHERE id = ?"
-            db:query(unassign_sql, {monitor.id})
-        end
-        return
-    end
-    
-    ngx.log(ngx.INFO, "將 ", #affected_monitors, " 個監控器從 ", failed_node_id, " 轉移到 ", #online_nodes, " 個可用節點")
-    
-    -- 簡單的輪詢分配策略
-    local node_index = 1
-    for _, monitor in ipairs(affected_monitors) do
-        local target_node = online_nodes[node_index].node_id
-        local update_sql = "UPDATE monitor SET assigned_node = ? WHERE id = ?"
-        db:query(update_sql, {target_node, monitor.id})
-        
-        ngx.log(ngx.INFO, "轉移監控器 \"", monitor.name, "\" (ID: ", monitor.id, ") 從 ", failed_node_id, " 到 ", target_node)
-        
-        -- 輪詢到下一個節點
-        node_index = (node_index % #online_nodes) + 1
-    end
-    
-    ngx.log(ngx.INFO, "節點故障轉移完成: ", failed_node_id, "，重新分配了 ", #affected_monitors, " 個監控器")
-end
-
--- 獲取節點狀態概覽
-local function get_node_status_overview()
-    local db = get_db_connection()
-    if not db then
-        return { error = "無法連接資料庫" }
-    end
-    
-    local nodes_sql = [[
-        SELECT 
-            n.node_id,
-            n.ip,
-            n.status,
-            n.last_heartbeat,
-            n.created_at,
-            n.updated_at,
-            COUNT(m.id) as monitor_count
-        FROM node n
-        LEFT JOIN monitor m ON n.node_id = m.assigned_node OR (m.assigned_node IS NULL AND m.node_id = n.node_id)
-        GROUP BY n.node_id, n.ip, n.status, n.last_heartbeat, n.created_at, n.updated_at
-        ORDER BY n.node_id
-    ]]
-    
-    local nodes, err = db:query(nodes_sql)
+    -- 獲取所有節點
+    local nodes, err = _M.get_all_nodes()
     if not nodes then
-        db:close()
-        return { error = "查詢節點失敗: " .. (err or "unknown") }
+        ngx.log(ngx.ERR, "Failed to get nodes: ", err)
+        if DEBUG_CONFIG.enabled then
+            health_check_debug_log("獲取節點失敗，錯誤: %s", err)
+        end
+        return false
     end
     
-    -- 格式化時間戳
+    local success_count = 0
+    local fail_count = 0
+    
+    -- 檢查每個節點
     for _, node in ipairs(nodes) do
-        if node.last_heartbeat then
-            node.last_heartbeat_formatted = os.date("%Y-%m-%d %H:%M:%S", node.last_heartbeat)
+        local node_id = node.node_id
+        local ip = node.ip
+        local port = nil
+        local current_status = node.status
+        
+        if DEBUG_CONFIG.enabled then
+            health_check_debug_log("檢查節點 %s (%s:%s) 當前狀態: %s", node_id, ip, (port or 3001), current_status)
         end
-        if node.created_at then
-            node.created_at_formatted = os.date("%Y-%m-%d %H:%M:%S", node.created_at)
-        end
-        if node.updated_at then
-            node.updated_at_formatted = os.date("%Y-%m-%d %H:%M:%S", node.updated_at)
+        
+        if ip then
+            local is_healthy, reason = _M.check_node_health(ip, port)
+            
+            if is_healthy then
+                -- 節點健康，更新為 online
+                if current_status ~= "online" then
+                    _M.update_node_status(node_id, "online", true)
+                end
+                success_count = success_count + 1
+                if DEBUG_CONFIG.enabled then
+                    health_check_debug_log("節點 %s 健康檢查成功", node_id)
+                end
+            else
+                -- 節點不健康，更新為 offline
+                if current_status ~= "offline" then
+                    _M.update_node_status(node_id, "offline", false)
+                end
+                fail_count = fail_count + 1
+                if DEBUG_CONFIG.enabled then
+                    health_check_debug_log("節點 %s 健康檢查失敗，原因: %s", node_id, reason)
+                end
+            end
+        else
+            ngx.log(ngx.WARN, "Node ", node_id, " has no IP address")
+            if DEBUG_CONFIG.enabled then
+                health_check_debug_log("節點 %s 沒有IP地址", node_id)
+            end
         end
     end
     
-    db:close()
+    -- 更新統計資訊
+    health_checker:set("last_check", current_time)
+    health_checker:set("success_count", success_count)
+    health_checker:set("fail_count", fail_count)
     
-    return {
-        nodes = nodes,
-        total_nodes = #nodes,
-        online_nodes = #nodes > 0 and #nodes or 0,
-        timestamp = os.time(),
-        config = CONFIG
-    }
+    ngx.log(ngx.INFO, "Health check completed. Online: ", success_count, ", Offline: ", fail_count)
+    
+    if DEBUG_CONFIG.enabled then
+        health_check_debug_log("健康檢查完成，成功: %d, 失敗: %d", success_count, fail_count)
+    end
+    
+    return true
 end
 
--- 獲取健康檢查統計資訊
-local function get_health_check_statistics()
-    return {
-        last_heartbeat = health_checker:get("last_heartbeat") or 0,
-        heartbeat_count = health_checker:get("heartbeat_count") or 0,
-        last_failover = health_checker:get("last_failover") or 0,
-        failover_count = health_checker:get("failover_count") or 0,
-        timestamp = os.time()
+-- 獲取健康檢查統計
+function _M.get_statistics()
+    if not health_checker then
+        return {}
+    end
+    
+    local stats = {
+        check_count = health_checker:get("check_count") or 0,
+        last_check = health_checker:get("last_check") or 0,
+        success_count = health_checker:get("success_count") or 0,
+        fail_count = health_checker:get("fail_count") or 0,
+        debug_enabled = DEBUG_CONFIG.enabled,
+        debug_host = DEBUG_CONFIG.host,
+        debug_port = DEBUG_CONFIG.port
     }
+    
+    if DEBUG_CONFIG.enabled then
+        system_debug_log("獲取統計資訊: %s", require('cjson').encode(stats))
+    end
+    
+    return stats
 end
 
--- 獲取故障檢測狀態概覽
-local function get_fault_detection_status()
-    local last_cycle = fault_detector and fault_detector:get("last_cycle") or 0
-    local last_summary_json = fault_detector and fault_detector:get("last_summary") or nil
-    local last_summary = nil
+-- 健康檢查工作器
+function _M.health_check_worker()
+    ngx.log(ngx.INFO, "🚀 健康檢查工作器開始啟動...")
     
-    if last_summary_json then
-        local ok, decoded = pcall(cjson.decode, last_summary_json)
+    if DEBUG_CONFIG.enabled then
+        system_debug_log("健康檢查工作器已啟動")
+        system_debug_log("調試模式已啟用，主機: %s 端口: %d", DEBUG_CONFIG.host, DEBUG_CONFIG.port)
+    end
+    
+    -- 記錄工作器啟動時間
+    local start_time = os.time()
+    local worker_id = ngx.worker.pid()
+    ngx.log(ngx.INFO, "📅 工作器啟動時間: ", os.date("%Y-%m-%d %H:%M:%S", start_time), " (Worker PID: ", worker_id, ")")
+    
+    -- 初始化循環計數器
+    local loop_count = 0
+    local last_success_time = 0
+    
+    ngx.log(ngx.INFO, "🔄 開始健康檢查循環...")
+    
+    while true do
+        loop_count = loop_count + 1
+        local current_time = os.time()
+        local loop_start_time = os.time()
+        
+        ngx.log(ngx.INFO, "🔄 健康檢查循環 #", loop_count, " 開始 (", os.date("%H:%M:%S", current_time), ")")
+        
+        if DEBUG_CONFIG.enabled then
+            health_check_debug_log("循環 #%d 開始，當前時間: %d", loop_count, current_time)
+            health_check_debug_log("距離上次成功檢查: %d 秒", (current_time - last_success_time))
+        end
+        
+        -- 執行健康檢查
+        local ok, err = pcall(_M.run_health_check)
+        local check_duration = os.time() - loop_start_time
+        
         if ok then
-            last_summary = decoded
+            ngx.log(ngx.INFO, "✅ 健康檢查循環 #", loop_count, " 執行成功，耗時: ", check_duration, " 秒")
+            last_success_time = current_time
+            
+            if DEBUG_CONFIG.enabled then
+                ngx.log(ngx.DEBUG, "🔍 調試: 健康檢查執行成功，循環 #", loop_count)
+                ngx.log(ngx.DEBUG, "🔍 調試: 執行耗時: ", check_duration, " 秒")
+            end
+        else
+            ngx.log(ngx.ERR, "❌ 健康檢查循環 #", loop_count, " 執行失敗，錯誤: ", err)
+            ngx.log(ngx.ERR, "❌ 執行耗時: ", check_duration, " 秒")
+            
+            if DEBUG_CONFIG.enabled then
+                ngx.log(ngx.DEBUG, "🔍 調試: 健康檢查執行失敗，循環 #", loop_count)
+                ngx.log(ngx.DEBUG, "🔍 調試: 錯誤詳情: ", err)
+                ngx.log(ngx.DEBUG, "🔍 調試: 執行耗時: ", check_duration, " 秒")
+            end
         end
+        
+        -- 記錄循環統計
+        if loop_count % 10 == 0 then
+            local uptime = current_time - start_time
+            local avg_duration = uptime / loop_count
+            ngx.log(ngx.INFO, "📊 循環統計 - 總循環: ", loop_count, ", 運行時間: ", uptime, " 秒, 平均耗時: ", avg_duration, " 秒")
+            
+            if DEBUG_CONFIG.enabled then
+                ngx.log(ngx.DEBUG, "🔍 調試: 統計資訊 - 循環: ", loop_count, ", 運行時間: ", uptime, ", 平均耗時: ", avg_duration)
+            end
+        end
+        
+        -- 等待30秒
+        ngx.log(ngx.INFO, "⏳ 等待30秒後進行下一次檢查... (循環 #", loop_count, ")")
+        
+        if DEBUG_CONFIG.enabled then
+            ngx.log(ngx.DEBUG, "🔍 調試: 等待30秒後進行下一次檢查...")
+            ngx.log(ngx.DEBUG, "🔍 調試: 當前循環: ", loop_count, ", 下次檢查時間: ", os.date("%H:%M:%S", current_time + 30))
+        end
+        
+        -- 使用 ngx.sleep 等待
+        local sleep_start = os.time()
+        ngx.sleep(30)
+        local actual_sleep_time = os.time() - sleep_start
+        
+        if DEBUG_CONFIG.enabled then
+            ngx.log(ngx.DEBUG, "🔍 調試: 睡眠完成，實際睡眠時間: ", actual_sleep_time, " 秒")
+        end
+        
+        -- 檢查睡眠時間是否異常
+        if actual_sleep_time < 25 or actual_sleep_time > 35 then
+            ngx.log(ngx.WARN, "⚠️ 睡眠時間異常: 預期30秒，實際 ", actual_sleep_time, " 秒")
+        end
+        
+        ngx.log(ngx.INFO, "⏰ 睡眠完成，準備開始下一次循環...")
     end
-    
-    return {
-        last_cycle = last_cycle,
-        last_summary = last_summary or { checked = 0, failed = 0, recovered = 0 },
-        scan_count = fault_detector and fault_detector:get("scan_count") or 0,
-        config = CONFIG,
-        timestamp = os.time()
-    }
 end
 
--- 導出函數
-return {
-    send_heartbeat = send_heartbeat,
-    scan_all_nodes = scan_all_nodes,
-    check_nodes_and_handle_failover = check_nodes_and_handle_failover,
-    get_node_status_overview = get_node_status_overview,
-    get_health_check_statistics = get_health_check_statistics,
-    get_fault_detection_status = get_fault_detection_status,
-    CONFIG = CONFIG
-}
+-- 獲取調試配置
+function _M.get_debug_config()
+    return DEBUG_CONFIG
+end
+
+-- 手動啟動調試器
+function _M.start_debugger()
+    if DEBUG_CONFIG.enabled then
+        return start_emmy_debugger(DEBUG_CONFIG)
+    else
+        ngx.log(ngx.WARN, "Debug mode is not enabled")
+        return false
+    end
+end
+
+return _M
