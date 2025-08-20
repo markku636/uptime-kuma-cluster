@@ -9,8 +9,7 @@
                 <!-- Node Display Toggle - Moved to header-top for better visibility -->
                 <div v-if="$root.info && $root.info.currentNodeId" class="node-toggle-section">
                     <div class="node-filter-indicator">
-                        <small class="text-muted">
-                            <font-awesome-icon icon="server" />
+                        <small class="text-muted">                            
                             {{ $t("Node") }}: {{ showAllNodes ? $t("All Nodes") : $root.info.currentNodeId }}
                         </small>
                     </div>
