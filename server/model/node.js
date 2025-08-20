@@ -24,11 +24,11 @@ class Node extends BeanModel {
      * Create or update node if it exists
      * @param {string} nodeId Node ID
      * @param {string} nodeName Node name
-     * @param {string} ip IP address
+     * @param {string} host Host address
      * @param {boolean} isPrimary Whether this is the primary node
      * @returns {Promise<Node>} Created or updated node
      */
-    static async createOrUpdate(nodeId, nodeName, ip = null, isPrimary = false) {
+    static async createOrUpdate(nodeId, nodeName, host = null, isPrimary = false) {
         try {
             // 先檢查節點是否已存在
             let node = await Node.getByNodeId(nodeId);
@@ -38,8 +38,8 @@ class Node extends BeanModel {
                 log.debug("node", `Updating existing node: ${nodeId} (${nodeName})`);
                 const now = R.isoDateTime();
                 await R.exec(
-                    "UPDATE node SET node_name = ?, ip = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
-                    [ nodeName, ip, now, "online", now, nodeId ]
+                    "UPDATE node SET node_name = ?, host = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
+                    [ nodeName, host, now, "online", now, nodeId ]
                 );
 
                 // Handle primary node setting
@@ -56,7 +56,7 @@ class Node extends BeanModel {
                 node = R.dispense("node");
                 node.node_id = nodeId;
                 node.node_name = nodeName;
-                node.ip = ip;
+                node.host = host;
                 node.is_primary = isPrimary ? 1 : 0; // Use 1/0 for MariaDB TINYINT
                 node.status = "online"; // 新節點預設為在線
                 node.created_date = R.isoDateTime();
@@ -133,27 +133,27 @@ class Node extends BeanModel {
                 if (existingNode) {
                     log.info("node", `Node ${currentNodeId} already exists, skipping creation. Current status: ${existingNode.status || 'unknown'}`);
                     
-                    // 更新現有節點的基本信息（IP、名稱等）
-                    const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
+                    // 更新現有節點的基本信息（host、名稱等）
+                    const nodeHost = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
                     const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
                     
                     // 只更新必要的信息，不改變主節點狀態（避免 R.store 可能觸發 INSERT）
                     const now = R.isoDateTime();
                     await R.exec(
-                        "UPDATE node SET node_name = ?, ip = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
-                        [ nodeName, nodeIp, now, "online", now, currentNodeId ]
+                        "UPDATE node SET node_name = ?, host = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
+                        [ nodeName, nodeHost, now, "online", now, currentNodeId ]
                     );
-                    log.info("node", `Updated existing node from env: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}`);
+                    log.info("node", `Updated existing node from env: ${currentNodeId} (${nodeName}) - Host: ${nodeHost}`);
                     return;
                 }
                 
                 // 節點不存在，創建新節點
-                const nodeIp = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
+                const nodeHost = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
                 const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
                 const isPrimary = (process.env.UPTIME_KUMA_PRIMARY === "1" || process.env.UPTIME_KUMA_PRIMARY === "true");
                 
-                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - IP: ${nodeIp}${isPrimary ? " [primary]" : ""}`);
-                await Node.createOrUpdate(currentNodeId, nodeName, nodeIp, isPrimary);
+                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - Host: ${nodeHost}${isPrimary ? " [primary]" : ""}`);
+                await Node.createOrUpdate(currentNodeId, nodeName, nodeHost, isPrimary);
                 
             } catch (error) {
                 log.error("node", `Failed to initialize node ${currentNodeId}: ${error.message}`);
@@ -167,10 +167,10 @@ class Node extends BeanModel {
                 // Create a default local node
                 const defaultNodeId = "local-node";
                 const defaultNodeName = "Local Node";
-                const defaultNodeIp = "127.0.0.1";
+                const defaultNodeHost = "127.0.0.1";
                 
                 log.info("node", "No nodes found and no environment variables set. Creating default local node.");
-                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeIp, true); // Make it primary
+                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeHost, true); // Make it primary
             }
         }
     }
@@ -276,7 +276,7 @@ class Node extends BeanModel {
             id: this.id,
             nodeId: this.node_id,
             nodeName: this.node_name,
-            ip: this.ip,
+            host: this.host,
             isPrimary: !!(this.is_primary || this.is_primary === 1), // Handle both boolean and tinyint from MariaDB
             status: this.status || "unknown",
             lastHeartbeat: this.last_heartbeat,

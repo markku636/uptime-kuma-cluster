@@ -19,11 +19,33 @@ x-node-base: &node-base
     retries: 3
     start_period: 40s
 
+# 共用環境變數配置
+x-common-env: &common-env
+  UPTIME_KUMA_DB_TYPE: mariadb
+  UPTIME_KUMA_DB_HOSTNAME: mariadb
+  UPTIME_KUMA_DB_PORT: 3306
+  UPTIME_KUMA_DB_NAME: kuma
+  UPTIME_KUMA_DB_USERNAME: kuma
+  UPTIME_KUMA_DB_PASSWORD: kuma_pass
+    
+
+# OpenResty 共用環境變數
+x-openresty-env: &openresty-env
+  DB_HOST: mariadb
+  DB_PORT: 3306
+  DB_USER: kuma
+  DB_PASSWORD: kuma_pass
+  DB_NAME: kuma
+  EMMY_DEBUG_ENABLED: true
+  EMMY_DEBUG_HOST: 0.0.0.0
+  EMMY_DEBUG_PORT: 9966
+  HEALTH_CHECK_INTERVAL: 30
+  HEALTH_CHECK_TIMEOUT: 5
+  DEBUG_LOG_LEVEL: DEBUG
+
 volumes:
   kuma-db:
-    name: kuma-db
-  nginx_logs:
-  nginx_debug_logs:
+    name: kuma-db  
 
 services:
   mariadb:
@@ -64,20 +86,9 @@ services:
       - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d:ro
       - ./nginx/ssl:/usr/local/openresty/nginx/conf/ssl:ro
       - ./nginx/logs:/usr/local/openresty/nginx/logs
-      - ./nginx/logs/debug:/usr/local/openresty/nginx/logs/debug
-      - nginx_debug_logs:/usr/local/openresty/nginx/logs/debug
+      - ./nginx/logs/debug:/usr/local/openresty/nginx/logs/debug      
     environment:
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_USER=kuma
-      - DB_PASSWORD=kuma_pass
-      - DB_NAME=kuma
-      - EMMY_DEBUG_ENABLED=true
-      - EMMY_DEBUG_HOST=0.0.0.0
-      - EMMY_DEBUG_PORT=9966
-      - HEALTH_CHECK_INTERVAL=30
-      - HEALTH_CHECK_TIMEOUT=5
-      - DEBUG_LOG_LEVEL=DEBUG
+      <<: *openresty-env
     depends_on:
       - mariadb
       - uptime-kuma-node1
@@ -100,16 +111,11 @@ services:
     ports:
       - "9091:3001"
     environment:
-      - UPTIME_KUMA_DB_TYPE=mariadb
-      - UPTIME_KUMA_DB_HOSTNAME=mariadb
-      - UPTIME_KUMA_DB_PORT=3306
-      - UPTIME_KUMA_DB_NAME=kuma
-      - UPTIME_KUMA_DB_USERNAME=kuma
-      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_FORCE_MIGRATE=true
-      - UPTIME_KUMA_NODE_ID=node1
-      - UPTIME_KUMA_NODE_NAME=node1
-      - UPTIME_KUMA_NODE_HOST=192.168.201.101:9091
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: node1
+      UPTIME_KUMA_NODE_NAME: node1
+      UPTIME_KUMA_NODE_HOST: uptime-kuma-node1:3001
+      UPTIME_KUMA_FORCE_MIGRATE: true
 
   uptime-kuma-node2:
     <<: *node-base
@@ -118,16 +124,15 @@ services:
       - ./data/node2:/app/data
     ports:
       - "9092:3001"
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
     environment:
-      - UPTIME_KUMA_DB_TYPE=mariadb
-      - UPTIME_KUMA_DB_HOSTNAME=mariadb
-      - UPTIME_KUMA_DB_PORT=3306
-      - UPTIME_KUMA_DB_NAME=kuma
-      - UPTIME_KUMA_DB_USERNAME=kuma
-      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_NODE_ID=node2
-      - UPTIME_KUMA_NODE_NAME=node2
-      - UPTIME_KUMA_NODE_HOST=192.168.201.101:9092
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: node2
+      UPTIME_KUMA_NODE_NAME: node2
+      UPTIME_KUMA_NODE_HOST: uptime-kuma-node2:3001
+      UPTIME_KUMA_SKIP_MIGRATE: true
 
   uptime-kuma-node3:
     <<: *node-base
@@ -136,16 +141,15 @@ services:
       - ./data/node3:/app/data
     ports:
       - "9093:3001"
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
     environment:
-      - UPTIME_KUMA_DB_TYPE=mariadb
-      - UPTIME_KUMA_DB_HOSTNAME=mariadb
-      - UPTIME_KUMA_DB_PORT=3306
-      - UPTIME_KUMA_DB_NAME=kuma
-      - UPTIME_KUMA_DB_USERNAME=kuma
-      - UPTIME_KUMA_DB_PASSWORD=kuma_pass
-      - UPTIME_KUMA_NODE_ID=node3
-      - UPTIME_KUMA_NODE_NAME=node3
-      - UPTIME_KUMA_NODE_HOST=192.168.201.101:9093
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: node3
+      UPTIME_KUMA_NODE_NAME: node3
+      UPTIME_KUMA_NODE_HOST: uptime-kuma-node3:3001
+      UPTIME_KUMA_SKIP_MIGRATE: true
 
 networks:
   kuma-network:

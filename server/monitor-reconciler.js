@@ -17,7 +17,7 @@ async function reconcileMonitors() {
         let params = [];
 
         if (currentNodeId) {
-            whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)) ";
             params.push(currentNodeId, currentNodeId);
         }
 

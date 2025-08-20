@@ -103,7 +103,7 @@
 系統現在支援以下環境變數：
 - `UPTIME_KUMA_NODE_ID` 或 `NODE_ID`: 節點 ID
 - `UPTIME_KUMA_NODE_NAME` 或 `NODE_NAME`: 節點名稱（可選）
-- `UPTIME_KUMA_NODE_IP` 或 `NODE_IP`: 節點 IP（可選）
+- `UPTIME_KUMA_NODE_HOST` 或 `NODE_HOST`: 節點主機地址（可選）
 
 ## 自動初始化
 

@@ -58,6 +58,21 @@
             </div>
             <div class="header-filter">
                 <MonitorListFilter :filterState="filterState" @update-filter="updateFilter" />
+                
+                <!-- 列標題 -->
+                <div class="column-headers">
+                    <div class="row">
+                        <div class="col-5">
+                            <small class="text-muted">{{ $t("Monitor") }}</small>
+                        </div>
+                        <div class="col-2 text-center">
+                            <small class="text-muted">{{ $t("Node") }}</small>
+                        </div>
+                        <div class="col-5">
+                            <small class="text-muted">{{ $t("Status") }}</small>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Selection Controls -->
@@ -240,11 +255,30 @@ export default {
         },
         showAllNodes() {
             this.handleNodeToggle();
+            // Save the showAllNodes preference to localStorage
+            localStorage.setItem("uptimeKumaShowAllNodes", JSON.stringify(this.showAllNodes));
         },
     },
     mounted() {
         window.addEventListener("scroll", this.onScroll);
         this.monitorCount = Object.keys(this.$root.monitorList).length;
+        
+        // Save the initial monitor list for potential restoration
+        if (this.$root.monitorList && Object.keys(this.$root.monitorList).length > 0) {
+            this.originalMonitorList = { ...this.$root.monitorList };
+        }
+        
+        // Load saved showAllNodes preference from localStorage
+        const savedShowAllNodes = localStorage.getItem("uptimeKumaShowAllNodes");
+        if (savedShowAllNodes !== null) {
+            const shouldShowAllNodes = JSON.parse(savedShowAllNodes);
+            if (shouldShowAllNodes) {
+                // Set the flag and request all monitors without triggering the watcher
+                this.showAllNodes = true;
+                // Directly request all monitors to avoid watcher issues
+                this.requestAllMonitors();
+            }
+        }
     },
     beforeUnmount() {
         window.removeEventListener("scroll", this.onScroll);
@@ -359,12 +393,8 @@ export default {
                 }
             }
 
-            // 依「有效節點」過濾（assigned_node 優先於 node_id），當未顯示所有節點時生效
+            // 節點過濾邏輯已移至後端處理，前端不再需要額外的節點過濾
             let nodeMatch = true;
-            if (this.$root.info && this.$root.info.currentNodeId && !this.showAllNodes) {
-                const effectiveNode = monitor.assigned_node || monitor.node_id || null;
-                nodeMatch = !effectiveNode || effectiveNode === this.$root.info.currentNodeId;
-            }
 
             // filter by search text
             // finds monitor name, tag name or tag value
@@ -431,37 +461,48 @@ export default {
 
             return m1.name.localeCompare(m2.name);
         },
+        /**
+         * Request all monitors from all nodes without triggering the watcher
+         * This method is used during component initialization
+         */
+        requestAllMonitors() {
+            this.$root.getSocket().emit("getAllMonitors", (res) => {
+                if (res.ok) {
+                    // Update monitor list with all monitors
+                    this.$root.monitorList = res.data;
+                    this.monitorCount = Object.keys(res.data).length;
+                    
+                    // Show performance warning if too many monitors
+                    if (this.monitorCount > 100) {
+                        this.$root.toastWarning(this.$t("Large dataset loaded. Performance may be affected."));
+                    }
+                } else {
+                    this.$root.toastError(res.msg);
+                    this.showAllNodes = false; // Revert toggle on error
+                }
+            });
+        },
         handleNodeToggle() {
             this.monitorCount = Object.keys(this.$root.monitorList).length;
             
             if (this.showAllNodes) {
+                // Save current monitor list before requesting all monitors
+                if (!this.originalMonitorList) {
+                    this.originalMonitorList = { ...this.$root.monitorList };
+                }
+                
                 // Request all monitors from all nodes
-                this.$root.getSocket().emit("getAllMonitors", (res) => {
-                    if (res.ok) {
-                        // Temporarily store current monitors to restore later if needed
-                        this.originalMonitorList = { ...this.$root.monitorList };
-                        
-                        // Update monitor list with all monitors
-                        this.$root.monitorList = res.data;
-                        this.monitorCount = Object.keys(res.data).length;
-                        
-                        // Show performance warning if too many monitors
-                        if (this.monitorCount > 100) {
-                            this.$root.toastWarning(this.$t("Large dataset loaded. Performance may be affected."));
-                        }
-                    } else {
-                        this.$root.toastError(res.msg);
-                        this.showAllNodes = false; // Revert toggle on error
-                    }
-                });
+                this.requestAllMonitors();
             } else {
                 // Restore original monitor list or request current node monitors
                 if (this.originalMonitorList) {
                     this.$root.monitorList = this.originalMonitorList;
                     this.originalMonitorList = null;
                 } else {
-                    // Re-request current node monitors
-                    this.$root.getSocket().emit("monitorList", this.$root.monitorList);
+                    // If no original list exists, request current node monitors
+                    // This happens when user first loads the page and toggles showAllNodes
+                    this.$root.getSocket().emit("getMonitorList");
+                    // The monitorList event will be handled by the socket mixin
                 }
                 this.monitorCount = Object.keys(this.$root.monitorList).length;
             }
@@ -614,6 +655,26 @@ export default {
     
     svg {
         margin-right: 4px;
+    }
+}
+
+.column-headers {
+    margin-top: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    
+    .dark & {
+        border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .text-center {
+        text-align: center;
+    }
+    
+    small {
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 }
 </style>

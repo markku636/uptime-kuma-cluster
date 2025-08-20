@@ -25,8 +25,15 @@ const apiLimiter = rateLimit({
     message: "Too many API requests from this IP, please try again later."
 });
 
-// Apply rate limiting to all API routes
-router.use("/api/v1", apiLimiter);
+// Apply rate limiting to all API routes except health check
+router.use("/api/v1", (req, res, next) => {
+    // Skip rate limiting for health check endpoint
+    if (req.path === "/health") {
+        return next();
+    }
+    // Apply rate limiting to all other API routes
+    return apiLimiter(req, res, next);
+});
 /**
  * Trigger reconcile monitors on this node
  */
@@ -732,7 +739,7 @@ router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
                 id,
                 node_id,
                 node_name,
-                ip,
+                host,
                 is_primary,
                 status,
                 last_heartbeat,
@@ -829,9 +836,9 @@ router.get("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
  *                 type: string
  *                 description: Node location
  *                 example: "Taipei, Taiwan"
- *               ip:
+ *               host:
  *                 type: string
- *                 description: Node IP address
+ *                 description: Node host address
  *                 example: "192.168.1.100"
  *               hostname:
  *                 type: string
@@ -858,7 +865,7 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
         
-        const { node_id, node_name, ip, is_primary } = req.body;
+        const { node_id, node_name, host, is_primary } = req.body;
         
         // Validation
         if (!node_id) {
@@ -881,7 +888,7 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
         const node = R.dispense("node");
         node.node_id = node_id;
         node.node_name = node_name || node_id;
-        node.ip = ip || "";
+        node.host = host || "";
         node.is_primary = is_primary || 0;
         node.status = "online";
         node.last_heartbeat = new Date();
@@ -926,9 +933,9 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
  *               location:
  *                 type: string
  *                 description: Node location
- *               ip:
+ *               host:
  *                 type: string
- *                 description: Node IP address
+ *                 description: Node host address
  *               hostname:
  *                 type: string
  *                 description: Node hostname
@@ -958,7 +965,7 @@ router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
         allowAllOrigin(res);
         
         const nodeId = req.params.id; // 字串
-        const { node_name, ip, is_primary, status } = req.body;
+        const { node_name, host, is_primary, status } = req.body;
         
         const node = await R.findOne("node", " node_id = ? ", [nodeId]);
         
@@ -971,7 +978,7 @@ router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
         
         // Update node
         if (node_name !== undefined) node.node_name = node_name;
-        if (ip !== undefined) node.ip = ip;
+        if (host !== undefined) node.host = host;
         if (is_primary !== undefined) node.is_primary = is_primary;
         if (status) node.status = status;
         
@@ -2610,6 +2617,209 @@ router.get("/api/v1/groups/:id", authenticateToken, async (req, res) => {
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
+    }
+});
+
+/**
+ * @swagger
+ * /api/v1/health:
+ *   get:
+ *     summary: Get system health status (no rate limiting)
+ *     tags: [General]
+ *     security: []
+ *     description: This endpoint is exempt from rate limiting for monitoring purposes
+ *     responses:
+ *       200:
+ *         description: System health status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 status:
+ *                   type: string
+ *                   example: "healthy"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-08-20T14:00:00.000Z"
+ *                 uptime:
+ *                   type: number
+ *                   description: Server uptime in seconds
+ *                   example: 3600
+ *                 version:
+ *                   type: string
+ *                   example: "2.0.0-beta.3"
+ *                 checks:
+ *                   type: object
+ *                   properties:
+ *                     database:
+ *                       type: object
+ *                       properties:
+ *                         status:
+ *                           type: string
+ *                           example: "healthy"
+ *                         responseTime:
+ *                           type: number
+ *                           description: Database response time in milliseconds
+ *                           example: 5
+ *                     server:
+ *                       type: object
+ *                       properties:
+ *                         status:
+ *                           type: string
+ *                           example: "healthy"
+ *                         memory:
+ *                           type: object
+ *                           properties:
+ *                             used:
+ *                               type: number
+ *                               description: Used memory in bytes
+ *                               example: 52428800
+ *                             total:
+ *                               type: number
+ *                               description: Total memory in bytes
+ *                               example: 1073741824
+ *                             percentage:
+ *                               type: number
+ *                               description: Memory usage percentage
+ *                               example: 4.88
+ *       503:
+ *         description: System unhealthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: false
+ *                 status:
+ *                   type: string
+ *                   example: "unhealthy"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-08-20T14:00:00.000Z"
+ *                 checks:
+ *                   type: object
+ *                   properties:
+ *                     database:
+ *                       type: object
+ *                       properties:
+ *                         status:
+ *                           type: string
+ *                           example: "unhealthy"
+ *                         error:
+ *                           type: string
+ *                           example: "Database connection failed"
+ */
+// Health check endpoint (public, no auth required, no rate limiting)
+router.get("/api/v1/health", async (req, res) => {
+    allowAllOrigin(res);
+    
+    const startTime = Date.now();
+    const healthCheck = {
+        ok: true,
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        version: require("../../package.json").version,
+        checks: {}
+    };
+
+    try {
+        // Check database health
+        const dbStartTime = Date.now();
+        try {
+            // Try to execute a simple query to check database connectivity
+            await R.exec("SELECT 1");
+            const dbResponseTime = Date.now() - dbStartTime;
+            
+            healthCheck.checks.database = {
+                status: "healthy",
+                responseTime: dbResponseTime
+            };
+        } catch (dbError) {
+            healthCheck.checks.database = {
+                status: "unhealthy",
+                error: dbError.message,
+                responseTime: Date.now() - dbStartTime
+            };
+            healthCheck.ok = false;
+            healthCheck.status = "unhealthy";
+        }
+
+        // Check server health
+        const memoryUsage = process.memoryUsage();
+        const totalMemory = require('os').totalmem();
+        const usedMemory = memoryUsage.heapUsed;
+        const memoryPercentage = (usedMemory / totalMemory) * 100;
+
+        healthCheck.checks.server = {
+            status: "healthy",
+            memory: {
+                used: usedMemory,
+                total: totalMemory,
+                percentage: Math.round(memoryPercentage * 100) / 100
+            }
+        };
+
+        // Check if memory usage is too high (optional threshold)
+        if (memoryPercentage > 90) {
+            healthCheck.checks.server.status = "warning";
+            healthCheck.checks.server.memory.warning = "High memory usage detected";
+        }
+
+        // Check disk space if available (optional)
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const dataDir = process.env.DATA_DIR || "./data/";
+            
+            if (fs.existsSync(dataDir)) {
+                const stats = fs.statSync(dataDir);
+                healthCheck.checks.disk = {
+                    status: "healthy",
+                    dataDir: dataDir,
+                    exists: true
+                };
+            }
+        } catch (diskError) {
+            // Disk check is optional, don't fail the health check
+            healthCheck.checks.disk = {
+                status: "unknown",
+                error: diskError.message
+            };
+        }
+
+        // Check if any critical checks failed
+        const criticalChecks = ['database'];
+        const hasCriticalFailures = criticalChecks.some(check => 
+            healthCheck.checks[check] && healthCheck.checks[check].status === "unhealthy"
+        );
+
+        if (hasCriticalFailures) {
+            healthCheck.status = "unhealthy";
+            res.status(503);
+        }
+
+        const totalResponseTime = Date.now() - startTime;
+        healthCheck.responseTime = totalResponseTime;
+
+        res.json(healthCheck);
+
+    } catch (error) {
+        // If health check itself fails, return error
+        healthCheck.ok = false;
+        healthCheck.status = "error";
+        healthCheck.error = error.message;
+        healthCheck.responseTime = Date.now() - startTime;
+        
+        res.status(503).json(healthCheck);
     }
 });
 

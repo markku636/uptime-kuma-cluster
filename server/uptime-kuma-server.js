@@ -267,7 +267,8 @@ class UptimeKumaServer {
             } else {
                 log.debug("monitor", `[getMonitorJSONList] 依節點過濾監控: ${currentNodeId}（節點不存在於資料庫）`);
             }
-            query += "AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            // 顯示 node_id 或 assigned_node 是當前節點的監控器，過濾掉 unassigned 的監控器
+            query += "AND (assigned_node = ? OR node_id = ?) ";
             queryParams.push(currentNodeId, currentNodeId);
         } else {
             log.debug("monitor", "[getMonitorJSONList] 未指定節點 ID，回傳所有監控");

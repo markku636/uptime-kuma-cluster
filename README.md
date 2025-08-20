@@ -301,7 +301,7 @@ DB_NAME=kuma
 
 # 節點配置
 UPTIME_KUMA_NODE_ID=nginx-node
-UPTIME_KUMA_NODE_IP=127.0.0.1
+UPTIME_KUMA_NODE_HOST=127.0.0.1
 ```
 
 ### 共享記憶體配置

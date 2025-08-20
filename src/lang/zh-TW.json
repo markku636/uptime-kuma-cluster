@@ -1136,7 +1136,7 @@
     "Description": "說明",
     "Assigned Node": "指派節點",
     "assignedNodePlaceholder": "選擇應執行此監測器的節點",
-    "assignedNodeDescription": "指定應執行此監測器的節點。留空則允許任何節點執行。",
+            "assignedNodeDescription": "指定應執行此監測器的節點。留空或選擇 NA 則不會有節點執行。",
     "Node Management": "節點管理",
     "Nodes": "節點",
     "Node ID": "節點 ID",
@@ -1148,7 +1148,7 @@
     "Delete Node": "刪除節點",
     "Current Node": "目前節點",
     "Unassigned": "未指派",
-    "Any Node": "任何節點",
+    "NoSpecificNode": "NA",
     "nodeIdPlaceholder": "輸入唯一節點識別碼",
     "nodeNamePlaceholder": "輸入友善節點名稱（選填）",
     "nodeIpPlaceholder": "輸入節點 IP 位址（選填）",
@@ -1161,5 +1161,5 @@
     "Optional IP address for this node": "此節點的選填 IP 位址",
     "Optional version number for this node": "此節點的選填版本號",
     "Default Node": "預設節點",
-    "defaultNodeDescription": "指定此監測器的預設節點。用於負載平衡和故障轉移。"
+    "defaultNodeDescription": "指定此監測器的預設節點。用於負載平衡和故障轉移。留空或選擇 NA 則不會有節點執行。"
 }

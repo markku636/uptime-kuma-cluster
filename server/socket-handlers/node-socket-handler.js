@@ -35,7 +35,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { nodeId, nodeName, ip, isPrimary } = nodeData;
+            const { nodeId, nodeName, host, isPrimary } = nodeData;
 
             // Validate required fields
             if (!nodeId || !nodeName) {
@@ -49,7 +49,7 @@ module.exports.nodeSocketHandler = (socket) => {
             }
 
             // Create new node
-            const node = await Node.createOrUpdate(nodeId, nodeName, ip, isPrimary);
+            const node = await Node.createOrUpdate(nodeId, nodeName, host, isPrimary);
 
             log.info("node", `Added node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 
@@ -76,7 +76,7 @@ module.exports.nodeSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            const { id, nodeId, nodeName, ip, isPrimary } = nodeData;
+            const { id, nodeId, nodeName, host, isPrimary } = nodeData;
 
             // Validate required fields
             // Historically this endpoint expected a numeric `id`, but the
@@ -88,7 +88,7 @@ module.exports.nodeSocketHandler = (socket) => {
 
             // Load existing node
             // Use model method to handle update consistently (and avoid duplicate inserts)
-            await Node.createOrUpdate(nodeId, nodeName, ip, !!isPrimary);
+            await Node.createOrUpdate(nodeId, nodeName, host, !!isPrimary);
 
             log.info("node", `Updated node: ${nodeId} (${nodeName})${isPrimary ? " as primary node" : ""} by user ${socket.userID}`);
 

@@ -3,7 +3,7 @@ CREATE TABLE node (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     node_id VARCHAR(255) NOT NULL UNIQUE,
     node_name VARCHAR(255) NOT NULL,
-    ip VARCHAR(255),
+    host VARCHAR(255),
     is_primary BOOLEAN DEFAULT FALSE,
     status VARCHAR(20) DEFAULT 'unknown',
     last_heartbeat DATETIME,
@@ -22,7 +22,7 @@ exports.up = async function (knex) {
             // 基本資訊
             table.string('node_name', 100).notNullable();
             table.string('location', 200);
-            table.string('ip', 45);
+            table.string('host', 45);
             table.string('hostname', 100);
             
             // 狀態相關

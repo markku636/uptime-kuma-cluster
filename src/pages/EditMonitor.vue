@@ -1567,7 +1567,7 @@ message HealthCheckResponse {
         nodeOptionsList() {
             let list = [
                 {
-                    label: this.$t("Any Node"),
+                    label: this.$t("NoSpecificNode"),
                     value: null
                 }
             ];

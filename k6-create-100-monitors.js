@@ -10,8 +10,8 @@ const apiErrors = new Counter('api_errors');
 const rateLimitHits = new Counter('rate_limit_hits');
 
 // 配置
-const baseUrl = 'http://192.168.99.88:9091';
-const apiKey = 'uk1_SIDZNvdGb6dLKvtBJEfoYhoDTAwIn68aqlO-HwZN';
+const baseUrl = 'http://127.0.0.1:9091';
+const apiKey = 'uk1_rFyNCNMyKVikG4U_9DCHPXy64MnQLTUpahxKsj3w';
 
 // 測試配置 - 創建 100 個 monitor，大幅降低頻率
 export const options = {
@@ -61,6 +61,7 @@ function generateMonitorConfig(iterationIndex) {
     active: true,
     retryInterval: 30,
     timeout: 10,
+    node_id: 'node1',
     acceptStatusCodes: '200-299',
     description: `自動創建的 HTTP 測試監控器 - 第 ${iterationIndex + 1} 個`,
     tags: [`auto-created`, `test-${iterationIndex + 1}`, `type-http`]

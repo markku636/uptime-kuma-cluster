@@ -44,8 +44,8 @@
                                 <i class="fas fa-circle" :class="getStatusClass(item.status)"></i> 
                                 {{ getStatusText(item.status) }}
                             </div>
-                            <div class="ip" v-if="item.ip">
-                                <i class="fas fa-server"></i> {{ item.ip }}
+                            <div class="host" v-if="item.host">
+                                <i class="fas fa-server"></i> {{ item.host }}
                             </div>
 
                             <div class="last-heartbeat" v-if="item.lastHeartbeat">
@@ -122,15 +122,15 @@
                             </div>
 
                             <div class="mb-3">
-                                <label for="nodeIp" class="form-label">{{ $t("IP Address") }}</label>
+                                <label for="nodeHost" class="form-label">{{ $t("Host") }}</label>
                                 <input
-                                    id="nodeIp"
-                                    v-model="nodeForm.ip"
+                                    id="nodeHost"
+                                    v-model="nodeForm.host"
                                     type="text"
                                     class="form-control"
-                                    placeholder="192.168.1.100"
+                                    placeholder="192.168.1.100 or example.com"
                                 />
-                                <div class="form-text">{{ $t("Optional IP address for this node") }}</div>
+                                <div class="form-text">{{ $t("Optional host address for this node (IP address or hostname)") }}</div>
                             </div>
 
 
@@ -181,7 +181,7 @@ export default {
             nodeForm: {
                 nodeId: "",
                 nodeName: "",
-                ip: "",
+                host: "",
                 isPrimary: false,
             },
             modal: null,
@@ -238,7 +238,7 @@ export default {
             this.nodeForm = {
                 nodeId: "",
                 nodeName: "",
-                ip: "",
+                host: "",
                 isPrimary: false,
             };
             this.modal.show();
@@ -254,7 +254,7 @@ export default {
                 id: node.id,
                 nodeId: node.nodeId,
                 nodeName: node.nodeName,
-                ip: node.ip || "",
+                host: node.host || "",
                 isPrimary: node.isPrimary || false,
             };
             this.modal.show();

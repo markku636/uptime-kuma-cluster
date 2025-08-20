@@ -14,27 +14,35 @@
 
             <router-link :to="monitorURL(monitor.id)" class="item" :class="{ 'disabled': ! monitor.active }">
                 <div class="row">
-                    <div class="col-6 small-padding" :class="{ 'monitor-item': $root.userHeartbeatBar == 'bottom' || $root.userHeartbeatBar == 'none' }">
+                    <div class="col-5 small-padding" :class="{ 'monitor-item': $root.userHeartbeatBar == 'bottom' || $root.userHeartbeatBar == 'none' }">
                         <div class="info">
                             <Uptime :monitor="monitor" type="24" :pill="true" />
                             <span v-if="hasChildren" class="collapse-padding" @click.prevent="changeCollapsed">
                                 <font-awesome-icon icon="chevron-down" class="animated" :class="{ collapsed: isCollapsed}" />
                             </span>
                             {{ monitor.name }}
-                            
-                            <!-- 節點標示（僅在檢視所有節點時顯示） -->
-                            <span v-if="shouldShowNodeInfo" class="node-badge">
-                                <small>
-                                    <font-awesome-icon icon="server" />
-                                    {{ (monitor.assigned_node || monitor.node_id) || $t("Unassigned") }}
-                                </small>
-                            </span>
                         </div>
                         <div v-if="monitor.tags.length > 0" class="tags gap-1">
                             <Tag v-for="tag in monitor.tags" :key="tag" :item="tag" :size="'sm'" />
                         </div>
                     </div>
-                    <div v-show="$root.userHeartbeatBar == 'normal'" :key="$root.userHeartbeatBar" class="col-6">
+                    
+                    <!-- 節點列 -->
+                    <div class="col-2 small-padding node-column">
+                        <div class="node-info">
+                            <span v-if="monitor.assigned_node" class="node-badge assigned">                                                            
+                                {{ monitor.assigned_node }}
+                            </span>
+                            <span v-else-if="monitor.node_id" class="node-badge default">                                
+                                {{ monitor.node_id }}
+                            </span>
+                            <span v-else class="node-badge unassigned">                                
+                                {{ $t("Unassigned") }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div v-show="$root.userHeartbeatBar == 'normal'" :key="$root.userHeartbeatBar" class="col-5">
                         <HeartbeatBar ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
                     </div>
                 </div>
@@ -265,24 +273,68 @@ export default {
     z-index: 15;
 }
 
+.node-column {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.node-info {
+    text-align: center;
+}
+
 .node-badge {
-    margin-left: 8px;
-    padding: 2px 6px;
-    background-color: rgba(13, 202, 240, 0.1);
-    border: 1px solid rgba(13, 202, 240, 0.3);
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
     border-radius: 12px;
-    color: #0dcaf0;
-    
-    .dark & {
-        background-color: rgba(108, 117, 125, 0.2);
-        border-color: rgba(108, 117, 125, 0.4);
-        color: #adb5bd;
-    }
+    font-size: 0.8em;
+    white-space: nowrap;
     
     svg {
-        margin-right: 3px;
+        margin-right: 4px;
         font-size: 0.75em;
+    }
+    
+    // Assigned Node - 藍色 (優先級最高)
+    &.assigned {
+        background-color: rgba(13, 202, 240, 0.1);
+        border: 1px solid rgba(13, 202, 240, 0.3);
+        color: #0dcaf0;
+        
+        .dark & {
+            background-color: rgba(13, 202, 240, 0.2);
+            border-color: rgba(13, 202, 240, 0.5);
+            color: #0dcaf0;
+        }
+    }
+    
+    // Default Node - 綠色 (次優先級)
+    &.default {
+        background-color: rgba(25, 135, 84, 0.1);
+        border: 1px solid rgba(25, 135, 84, 0.3);
+        color: #198754;
+        
+        .dark & {
+            background-color: rgba(25, 135, 84, 0.2);
+            border-color: rgba(25, 135, 84, 0.5);
+            color: #20c997;
+        }
+    }
+    
+    // Unassigned - 黃色 (最低優先級)
+    &.unassigned {
+        background-color: rgba(255, 193, 7, 0.1);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        color: #ffc107;
+        
+        .dark & {
+            background-color: rgba(255, 193, 7, 0.2);
+            border-color: rgba(255, 193, 7, 0.5);
+            color: #ffca2c;
+        }
     }
 }
 
 </style>
+

@@ -17,6 +17,19 @@ local DEBUG_CONFIG = {
     log_level = os.getenv("DEBUG_LOG_LEVEL") or "INFO"
 }
 
+-- 健康檢查配置
+local HEALTH_CHECK_CONFIG = {
+    -- 被視為健康狀態的 HTTP 狀態碼
+    healthy_status_codes = {
+        [200] = "OK",
+        [429] = "Rate Limited - 請求頻率限制，但服務器健康"
+    },
+    -- 健康檢查超時時間（毫秒）
+    timeout = tonumber(os.getenv("HEALTH_CHECK_TIMEOUT")) or 5000,
+    -- 健康檢查間隔（秒）
+    interval = tonumber(os.getenv("HEALTH_CHECK_INTERVAL")) or 30
+}
+
 -- 調試日誌分類函數
 local function debug_log(category, level, message, ...)
     if not DEBUG_CONFIG.enabled then
@@ -108,9 +121,14 @@ local function redistribute_monitors_from_node(failed_node_id)
     if not targets then
         return false, terr
     end
+    
+    -- 如果没有可用的在线节点，记录警告但不进行重新分配
     if #targets == 0 then
-        ngx.log(ngx.WARN, "No online nodes to redistribute monitors to (failed node=", failed_node_id, ")")
-        return false, "no_targets"
+        ngx.log(ngx.WARN, "No online nodes to redistribute monitors to (failed node=", failed_node_id, "). All nodes are offline, keeping current monitor assignments.")
+        if DEBUG_CONFIG.enabled then
+            database_debug_log("所有節點都離線，保持當前監控分配狀態，不進行重新分配")
+        end
+        return true, "no_targets_available"
     end
 
     local db, err = db_connect()
@@ -266,10 +284,32 @@ function _M.init()
 end
 
 -- 檢查單個節點的健康狀態
-function _M.check_node_health(ip, port)
+function _M.check_node_health(host)
     -- 調試斷點
     if DEBUG_CONFIG.enabled then
-        network_debug_log("開始檢查節點 %s:%s", ip, (port or 3001))
+        network_debug_log("開始檢查節點 %s", host)
+    end
+    
+    -- 從 host 中解析主機名和端口
+    local hostname, port = host:match("^([^:]+):?(%d*)$")
+    if not hostname then
+        ngx.log(ngx.ERR, "Invalid host format: ", host)
+        return false, "invalid_host_format"
+    end
+    
+    -- 如果沒有指定端口，根據協議決定默認端口
+    if not port or port == "" then
+        if hostname:find("https") then
+            port = 443  -- HTTPS 默認端口
+        else
+            port = 80   -- HTTP 默認端口
+        end
+    else
+        port = tonumber(port)
+    end
+    
+    if DEBUG_CONFIG.enabled then
+        network_debug_log("解析結果 - 主機名: %s, 端口: %d", hostname, port)
     end
     
     local http = require "resty.http"
@@ -279,42 +319,42 @@ function _M.check_node_health(ip, port)
     httpc:set_timeout(5000)
     
     -- 嘗試連接
-    local ok, err = httpc:connect(ip, port or 3001)
+    local ok, err = httpc:connect(hostname, port)
     if not ok then
-        ngx.log(ngx.WARN, "Failed to connect to ", ip, ":", (port or 3001), ": ", err)
+        ngx.log(ngx.WARN, "Failed to connect to ", hostname, ":", port, ": ", err)
         if DEBUG_CONFIG.enabled then
             network_debug_log("連接失敗，錯誤: %s", err)
         end
-        return false, "connection_failed"
+        return false, "connection_failed: " .. (err or "unknown")
     end
     
     -- 發送 HTTP 請求
     local res, err = httpc:request({
-        path = "/health",
+        path = "/api/v1/health",
         method = "GET"
     })
     
     if not res then
-        ngx.log(ngx.WARN, "Failed to request from ", ip, ":", (port or 3001), ": ", err)
+        ngx.log(ngx.WARN, "Failed to request from ", hostname, ":", port, ": ", err)
         if DEBUG_CONFIG.enabled then
             network_debug_log("請求失敗，錯誤: %s", err)
         end
-        return false, "request_failed"
+        return false, "request_failed: " .. (err or "unknown")
     end
     
     -- 檢查狀態碼
     if res.status == 200 then
-        ngx.log(ngx.INFO, "Node ", ip, ":", (port or 3001), " is healthy")
+        ngx.log(ngx.INFO, "Node ", hostname, ":", port, " is healthy")
         if DEBUG_CONFIG.enabled then
             network_debug_log("節點健康，狀態碼: %s", res.status)
         end
         return true, "healthy"
     else
-        ngx.log(ngx.WARN, "Node ", ip, ":", (port or 3001), " returned status: ", res.status)
+        ngx.log(ngx.WARN, "Node ", hostname, ":", port, " returned status: ", res.status)
         if DEBUG_CONFIG.enabled then
             network_debug_log("節點不健康，狀態碼: %s", res.status)
         end
-        return false, "unhealthy"
+        return false, "unhealthy: status " .. res.status
     end
 end
 
@@ -349,7 +389,7 @@ function _M.get_all_nodes()
     end
     
     -- 查詢所有節點
-    local sql = "SELECT node_id, node_name, ip, status, last_seen FROM node"
+    local sql = "SELECT node_id, node_name, host, status, last_seen FROM node"
     local res, err = db:query(sql)
     
     if not res then
@@ -458,16 +498,15 @@ function _M.run_health_check()
     -- 檢查每個節點
     for _, node in ipairs(nodes) do
         local node_id = node.node_id
-        local ip = node.ip
-        local port = nil
+        local host = node.host
         local current_status = node.status
         
         if DEBUG_CONFIG.enabled then
-            health_check_debug_log("檢查節點 %s (%s:%s) 當前狀態: %s", node_id, ip, (port or 3001), current_status)
+            health_check_debug_log("檢查節點 %s (%s) 當前狀態: %s", node_id, host, current_status)
         end
         
-        if ip then
-            local is_healthy, reason = _M.check_node_health(ip, port)
+        if host then
+            local is_healthy, reason = _M.check_node_health(host)
             
             if is_healthy then
                 -- 節點健康，更新為 online
@@ -518,8 +557,10 @@ function _M.run_health_check()
                 local fail_key = "consec_fail:" .. node_id
                 local current_fail = health_checker:incr(fail_key, 1, 0)
                 if DEBUG_CONFIG.enabled then
-                    health_check_debug_log("節點 %s 連續失敗次數: %d", node_id, current_fail)
+                    health_check_debug_log("節點 %s 連續失敗次數: %d, 失敗原因: %s", node_id, current_fail, reason)
                 end
+                ngx.log(ngx.WARN, "Node ", node_id, " health check failed: ", reason, " (consecutive failures: ", current_fail, ")")
+                
                 -- 若達到三次失敗且尚未重新分配，進行監控重新分配
                 if current_fail >= 3 then
                     local reassigned_key = "reassigned:" .. node_id
@@ -529,6 +570,11 @@ function _M.run_health_check()
                         local ok, rerr = redistribute_monitors_from_node(node_id)
                         if ok then
                             health_checker:set(reassigned_key, 1)
+                            if rerr == "no_targets_available" then
+                                ngx.log(ngx.INFO, "Monitor redistribution skipped for node ", node_id, ": all nodes are offline")
+                            else
+                                ngx.log(ngx.INFO, "Monitor redistribution completed for node ", node_id)
+                            end
                         else
                             ngx.log(ngx.ERR, "Failed to redistribute monitors for node ", node_id, ": ", rerr or "unknown error")
                         end
@@ -545,9 +591,9 @@ function _M.run_health_check()
                 end
             end
         else
-            ngx.log(ngx.WARN, "Node ", node_id, " has no IP address")
+            ngx.log(ngx.WARN, "Node ", node_id, " has no host address")
             if DEBUG_CONFIG.enabled then
-                health_check_debug_log("節點 %s 沒有IP地址", node_id)
+                health_check_debug_log("節點 %s 沒有主機地址", node_id)
             end
         end
     end

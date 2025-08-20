@@ -754,6 +754,7 @@ let needSetup = false;
                 
                 // load balancing - default to node_id on creation, assigned_node is only for failover/override
                 bean.node_id = monitor.node_id;
+                bean.assigned_node = monitor.assigned_node;
 
                 bean.validate();
 
@@ -918,6 +919,7 @@ let needSetup = false;
                 
                 // load balancing
                 bean.node_id = monitor.node_id;
+                bean.assigned_node = monitor.assigned_node;
 
                 bean.validate();
 
@@ -988,13 +990,39 @@ let needSetup = false;
                 }));
                 const preloadData = await Monitor.preparePreloadData(monitorData);
                 
+                // Get basic heartbeat data for all monitors to display heartbeat bars
+                const heartbeatData = {};
+                for (const monitor of monitorList) {
+                    try {
+                        // Get the last few heartbeats for heartbeat bar display
+                        const heartbeats = await R.getAll(`
+                            SELECT id, status, time, ping, msg
+                            FROM heartbeat
+                            WHERE monitor_id = ?
+                            ORDER BY time DESC
+                            LIMIT 150
+                        `, [monitor.id]);
+                        
+                        if (heartbeats && heartbeats.length > 0) {
+                            heartbeatData[monitor.id] = heartbeats.reverse(); // Reverse to get chronological order
+                        }
+                    } catch (heartbeatError) {
+                        log.debug("monitor", `Failed to get heartbeats for monitor ${monitor.id}: ${heartbeatError.message}`);
+                        // Continue with other monitors even if one fails
+                    }
+                }
+                
                 const result = {};
                 monitorList.forEach(monitor => {
-                    // Only include essential data to avoid performance issues
-                    result[monitor.id] = monitor.toJSON(preloadData);
+                    // Include essential data and heartbeat data
+                    const monitorData = monitor.toJSON(preloadData);
+                    if (heartbeatData[monitor.id]) {
+                        monitorData.heartbeatList = heartbeatData[monitor.id];
+                    }
+                    result[monitor.id] = monitorData;
                 });
                 
-                log.info("monitor", `Returning ${monitorList.length} monitors from all nodes`);
+                log.info("monitor", `Returning ${monitorList.length} monitors from all nodes with heartbeat data`);
                 
                 callback({
                     ok: true,
@@ -1898,8 +1926,9 @@ async function startMonitors() {
     let params = [];
     
     // 負載平衡：依據「有效節點」過濾監控（assigned_node 優先於 node_id）
+    // 注意：當 assigned_node 和 node_id 都是 NULL 時（選擇 "NA"），沒有節點會執行
     if (currentNodeId) {
-        whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+        whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)) ";
         params.push(currentNodeId, currentNodeId);
         log.info("server", `Starting monitors for node: ${currentNodeId}`);
     } else {
@@ -1938,7 +1967,7 @@ async function reconcileMonitors() {
         let params = [];
 
         if (currentNodeId) {
-            whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?) OR (assigned_node IS NULL AND node_id IS NULL)) ";
+            whereClause += " AND (assigned_node = ? OR (assigned_node IS NULL AND node_id = ?)) ";
             params.push(currentNodeId, currentNodeId);
         }
 
