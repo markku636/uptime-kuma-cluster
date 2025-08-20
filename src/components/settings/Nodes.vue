@@ -4,9 +4,6 @@
             <button class="btn btn-primary me-2" type="button" @click="showAddDialog">
                 <font-awesome-icon icon="plus" /> {{ $t("Add Node") }}
             </button>
-            <button class="btn btn-outline-secondary" type="button" @click="rebalanceMonitors">
-                <font-awesome-icon icon="balance-scale" /> {{ $t("Rebalance Monitors") }}
-            </button>
         </div>
 
         <div>
@@ -335,19 +332,6 @@ export default {
                 default:
                     return this.$t("Unknown");
             }
-        },
-
-        /**
-         * Trigger manual monitor rebalancing
-         */
-        rebalanceMonitors() {
-            this.$root.getSocket().emit("rebalanceMonitors", (res) => {
-                this.$root.toastRes(res);
-                if (res.ok) {
-                    // Reload nodes to show updated status
-                    this.loadNodes();
-                }
-            });
         },
     },
 };
