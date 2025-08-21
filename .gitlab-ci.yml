@@ -130,7 +130,7 @@ cleanup_old_images:
   image:
     name: docker:latest
     pull_policy: always
-    entrypoint: [ "" ]
+    entrypoint: [""]
   script:
     - >
       REPO="$AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME";
