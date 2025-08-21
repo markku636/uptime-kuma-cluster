@@ -7,6 +7,35 @@ stages:
 variables:
   IMAGE: $AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME:${CI_PIPELINE_ID}
 
+debug_variables:
+  stage: check
+  script:
+    - echo "=== GitLab CI 变量调试 ==="
+    - echo "CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME"
+    - echo "CI_COMMIT_SHA: $CI_COMMIT_SHA"
+    - echo "CI_PIPELINE_ID: $CI_PIPELINE_ID"
+    - echo "CI_JOB_ID: $CI_JOB_ID"
+    - echo "CI_PROJECT_PATH: $CI_PROJECT_PATH"
+    - echo "CI_REGISTRY_IMAGE: $CI_REGISTRY_IMAGE"
+    - echo "CI_BUILD_REF_NAME: $CI_BUILD_REF_NAME"
+    - echo ""
+    - echo "=== 自定义变量 ==="
+    - echo "IMAGE: $IMAGE"
+    - echo "REMOTE_DIRS: $REMOTE_DIRS"
+    - echo "KEEP_VERSIONS: $KEEP_VERSIONS"
+    - echo ""
+    - echo "=== 部署相关变量 ==="
+    - echo "DEPLOY_HOST: $DEPLOY_HOST"
+    - echo "DEPLOY_PORT: $DEPLOY_PORT"
+    - echo "DEPLOY_USER: $DEPLOY_USER"
+    - echo "SSH_PRIVATE_KEY: [已设置]"
+    - echo "AZURE_CONTAINER_REGISTRY_URL: $AZURE_CONTAINER_REGISTRY_URL"
+    - echo "AZURE_CONTAINER_REGISTRY_USER: $AZURE_CONTAINER_REGISTRY_USER"
+    - echo "AZURE_CONTAINER_REGISTRY_KEY: [已设置]"
+  tags:
+    - Development.IISI_Banqiao.docker
+  allow_failure: true
+
 check_network:
   stage: check
   script:
