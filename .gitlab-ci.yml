@@ -9,16 +9,7 @@ variables:
 
 check_network:
   stage: check
-  script:
-    # 打印所有相关变量
-    - echo "=== GitLab CI 预定义变量 ==="
-    - echo "CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME"
-    - echo "CI_COMMIT_SHA: $CI_COMMIT_SHA"
-    - echo "CI_PIPELINE_ID: $CI_PIPELINE_ID"
-    - echo "CI_JOB_ID: $CI_JOB_ID"
-    - echo "CI_PROJECT_PATH: $CI_PROJECT_PATH"
-    - echo "CI_REGISTRY_IMAGE: $CI_REGISTRY_IMAGE"
-    - echo "CI_BUILD_REF_NAME: $CI_BUILD_REF_NAME"
+  script:   
     - echo ""
     - echo "=== 自定义变量 ==="
     - echo "IMAGE: $IMAGE"
@@ -27,18 +18,15 @@ check_network:
     - echo "=== 部署相关变量 ==="
     - echo "DEPLOY_HOST: $DEPLOY_HOST"
     - echo "DEPLOY_PORT: $DEPLOY_PORT"
-    - echo "DEPLOY_USER: $DEPLOY_USER"
-    - echo "SSH_PRIVATE_KEY: [已设置]"
+    - echo "DEPLOY_USER: $DEPLOY_USER"    
     - echo "AZURE_CONTAINER_REGISTRY_URL: $AZURE_CONTAINER_REGISTRY_URL"
-    - echo "AZURE_CONTAINER_REGISTRY_USER: $AZURE_CONTAINER_REGISTRY_USER"
-    - echo "AZURE_CONTAINER_REGISTRY_KEY: [已设置]"
+    - echo "AZURE_CONTAINER_REGISTRY_USER: $AZURE_CONTAINER_REGISTRY_USER"    
     - echo ""
     - echo "=== 环境信息 ==="
     - echo "当前目录: $(pwd)"
     - echo "用户: $(whoami)"
     - echo "主机名: $(hostname)"
-    - echo ""
-    # 檢查網路是否存在，若不存在則建立為 Docker bridge 網路
+    - echo ""    
     - docker network ls
 
     - |
