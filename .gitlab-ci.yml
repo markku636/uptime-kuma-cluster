@@ -16,6 +16,8 @@ check_network:
     - |
       NETWORK_NAME="kuma-network"
       echo "Checking for network: ${NETWORK_NAME}"
+      echo "AZURE_CONTAINER_REGISTRY_URL: ${AZURE_CONTAINER_REGISTRY_URL}"
+      echo "AZURE_CONTAINER_REGISTRY_USER: ${AZURE_CONTAINER_REGISTRY_USER}"      
       echo "IMAGE: ${IMAGE}"
       if ! docker network inspect ${NETWORK_NAME} > /dev/null 2>&1; then
         echo "Network ${NETWORK_NAME} not found. Creating Docker bridge network..."
