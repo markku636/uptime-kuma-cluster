@@ -351,12 +351,12 @@ exports.down = function (knex) {
 
 ### 4. 配置 Uptime Kuma 節點
 
-#### 4.1 更新現有的 docker-compose-dual-node.yaml
+#### 4.1 更新現有的 docker-compose-single-node.yaml
 
-基於現有的 `docker-compose-dual-node.yaml`，我們需要加入 OpenResty 服務：
+基於現有的 `docker-compose-single-node.yaml`，我們需要加入 OpenResty 服務：
 
 ```yaml
-# docker-compose-dual-node.yaml (更新版)
+# docker-compose-single-node.yaml (更新版)
 version: '3.8'
 
 volumes:
@@ -492,13 +492,13 @@ networks:
 
 ```bash
 # 啟動所有服務
-docker-compose -f docker-compose-dual-node.yaml up -d
+docker-compose -f docker-compose-single-node.yaml up -d
 
 # 查看服務狀態
-docker-compose -f docker-compose-dual-node.yaml ps
+docker-compose -f docker-compose-single-node.yaml ps
 
 # 查看日誌
-docker-compose -f docker-compose-dual-node.yaml logs -f openresty
+docker-compose -f docker-compose-single-node.yaml logs -f openresty
 ```
 
 **訪問方式：**
