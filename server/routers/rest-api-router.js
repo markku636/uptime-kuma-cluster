@@ -6,8 +6,8 @@ const User = require("../model/user");
 const StatusPage = require("../model/status_page");
 const Database = require("../database");
 const { Notification } = require("../notification");
-const { 
-    sendHttpError, 
+const {
+    sendHttpError,
     allowDevAllOrigin,
     allowAllOrigin
 } = require("../util-server");
@@ -40,12 +40,12 @@ router.use("/api/v1", (req, res, next) => {
 router.post("/api/v1/reconcile-monitors", authenticateToken, async (req, res) => {
     try {
         await reconcileMonitors();
-        res.json({ ok: true, msg: "Reconcile triggered" });
+        res.json({ ok: true,
+            msg: "Reconcile triggered" });
     } catch (e) {
         sendHttpError(res, e.message);
     }
 });
-
 
 /**
  * @swagger
@@ -83,9 +83,14 @@ router.get("/api/v1/status", (req, res) => {
 });
 
 // Custom authentication middleware for REST API
+/**
+ * @param req
+ * @param res
+ * @param next
+ */
 async function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    
+    const authHeader = req.headers["authorization"];
+
     if (!authHeader) {
         return res.status(401).json({
             ok: false,
@@ -94,22 +99,22 @@ async function authenticateToken(req, res, next) {
     }
 
     // Check if it's a Bearer token (JWT)
-    if (authHeader.startsWith('Bearer ')) {
+    if (authHeader.startsWith("Bearer ")) {
         const token = authHeader.substring(7);
-        
+
         try {
             const server = UptimeKumaServer.getInstance();
             const decoded = jwt.verify(token, server.jwtSecret);
-            
+
             // Find user
-            const user = await R.findOne("user", " username = ? AND active = 1 ", [decoded.username]);
+            const user = await R.findOne("user", " username = ? AND active = 1 ", [ decoded.username ]);
             if (!user) {
                 return res.status(401).json({
                     ok: false,
                     msg: "Invalid token - user not found"
                 });
             }
-            
+
             req.userId = user.id;
             req.user = user;
             next();
@@ -122,7 +127,7 @@ async function authenticateToken(req, res, next) {
     } else {
         // Assume it's an API key
         const apiKey = authHeader;
-        
+
         try {
             // Verify API key (simplified version)
             // You might want to implement proper API key verification here
@@ -134,7 +139,7 @@ async function authenticateToken(req, res, next) {
                     msg: "API key authentication failed"
                 });
             }
-            
+
             req.userId = user.id;
             req.user = user;
             next();
@@ -237,18 +242,19 @@ async function authenticateToken(req, res, next) {
 router.get("/api/v1/monitors", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
-        const monitors = await R.findAll("monitor", " AND user_id = ? ORDER BY weight DESC, name ", [req.userId]);
+
+        const monitors = await R.findAll("monitor", " AND user_id = ? ORDER BY weight DESC, name ", [ req.userId ]);
         const monitorList = [];
 
         // Prepare preload data to avoid n+1 queries and undefined map errors
-        const monitorData = monitors.map((m) => ({ id: m.id, active: m.active }));
+        const monitorData = monitors.map((m) => ({ id: m.id,
+            active: m.active }));
         const preloadData = await Monitor.preparePreloadData(monitorData);
 
         for (let monitor of monitors) {
             monitorList.push(monitor.toJSON(preloadData));
         }
-        
+
         res.json({
             ok: true,
             data: monitorList
@@ -295,20 +301,21 @@ router.get("/api/v1/monitors", authenticateToken, async (req, res) => {
 router.get("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const monitorId = parseInt(req.params.id);
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
-        
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitorId, req.userId ]);
+
         if (!monitor) {
             return res.status(404).json({
                 ok: false,
                 msg: "Monitor not found"
             });
         }
-        
-        const monitorData = [{ id: monitor.id, active: monitor.active }];
+
+        const monitorData = [{ id: monitor.id,
+            active: monitor.active }];
         const preloadData = await Monitor.preparePreloadData(monitorData);
-        
+
         res.json({
             ok: true,
             data: monitor.toJSON(preloadData)
@@ -406,7 +413,7 @@ router.post("/api/v1/monitors", authenticateToken, [
 ], async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({
@@ -415,11 +422,11 @@ router.post("/api/v1/monitors", authenticateToken, [
                 errors: errors.array()
             });
         }
-        
+
         // 檢查 node_id 是否存在（如果提供）
         if (req.body.node_id) {
             // 修正：使用 node_id 欄位而不是 name 欄位
-            const node = await R.findOne("node", " node_id = ? ", [req.body.node_id]);
+            const node = await R.findOne("node", " node_id = ? ", [ req.body.node_id ]);
             if (!node) {
                 return res.status(400).json({
                     ok: false,
@@ -427,7 +434,7 @@ router.post("/api/v1/monitors", authenticateToken, [
                 });
             }
         }
-        
+
         const monitor = R.dispense("monitor");
         monitor.name = req.body.name;
         monitor.type = req.body.type;
@@ -435,20 +442,25 @@ router.post("/api/v1/monitors", authenticateToken, [
         monitor.interval = req.body.interval || 60;
         monitor.active = req.body.active !== false;
         monitor.user_id = req.userId;
-        
+
         // 設定 node_id（如果提供）
         if (req.body.node_id) {
             monitor.node_id = req.body.node_id;
         }
-        
+
         // Set default values
         monitor.retryInterval = req.body.retryInterval || 60;
         monitor.maxretries = req.body.maxretries || 0;
         monitor.timeout = req.body.timeout || 48;
-        monitor.accepted_statuscodes_json = JSON.stringify(req.body.accepted_statuscodes || ["200-299"]);
-        
+        monitor.accepted_statuscodes_json = JSON.stringify(req.body.accepted_statuscodes || [ "200-299" ]);
+
+        // Set headers if provided
+        if (req.body.headers) {
+            monitor.headers = typeof req.body.headers === "string" ? req.body.headers : JSON.stringify(req.body.headers);
+        }
+
         await R.store(monitor);
-        
+
         // Activate the monitor if it's active (same logic as UI creation)
         if (monitor.active !== false) {
             const server = UptimeKumaServer.getInstance();
@@ -456,7 +468,7 @@ router.post("/api/v1/monitors", authenticateToken, [
                 await server.startMonitor(req.userId, monitor.id);
             }
         }
-        
+
         res.status(201).json({
             ok: true,
             msg: "Monitor created successfully",
@@ -508,25 +520,33 @@ router.post("/api/v1/monitors", authenticateToken, [
 router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const monitorId = parseInt(req.params.id);
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
-        
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitorId, req.userId ]);
+
         if (!monitor) {
             return res.status(404).json({
                 ok: false,
                 msg: "Monitor not found"
             });
         }
-        
+
         // Update monitor properties
-        if (req.body.name) monitor.name = req.body.name;
-        if (req.body.url) monitor.url = req.body.url;
-        if (req.body.interval) monitor.interval = req.body.interval;
-        if (req.body.active !== undefined) monitor.active = req.body.active;
-        
+        if (req.body.name) {
+            monitor.name = req.body.name;
+        }
+        if (req.body.url) {
+            monitor.url = req.body.url;
+        }
+        if (req.body.interval) {
+            monitor.interval = req.body.interval;
+        }
+        if (req.body.active !== undefined) {
+            monitor.active = req.body.active;
+        }
+
         await R.store(monitor);
-        
+
         // Restart the monitor if it's active (same logic as UI editing)
         if (monitor.active !== false) {
             const server = UptimeKumaServer.getInstance();
@@ -534,7 +554,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
                 await server.restartMonitor(req.userId, monitor.id);
             }
         }
-        
+
         res.json({
             ok: true,
             msg: "Monitor updated successfully"
@@ -567,19 +587,19 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
 router.delete("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const monitorId = parseInt(req.params.id);
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
-        
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitorId, req.userId ]);
+
         if (!monitor) {
             return res.status(404).json({
                 ok: false,
                 msg: "Monitor not found"
             });
         }
-        
-        await R.exec("DELETE FROM monitor WHERE id = ? AND user_id = ?", [monitorId, req.userId]);
-        
+
+        await R.exec("DELETE FROM monitor WHERE id = ? AND user_id = ?", [ monitorId, req.userId ]);
+
         res.json({
             ok: true,
             msg: "Monitor deleted successfully"
@@ -639,19 +659,19 @@ router.delete("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
 router.get("/api/v1/monitors/:id/heartbeats", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const monitorId = parseInt(req.params.id);
         const period = parseInt(req.query.period) || 24;
-        
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
-        
+
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitorId, req.userId ]);
+
         if (!monitor) {
             return res.status(404).json({
                 ok: false,
                 msg: "Monitor not found"
             });
         }
-        
+
         const sqlHourOffset = Database.sqlHourOffset();
         const heartbeats = await R.getAll(`
             SELECT * FROM heartbeat 
@@ -659,7 +679,7 @@ router.get("/api/v1/monitors/:id/heartbeats", authenticateToken, async (req, res
             ORDER BY time DESC 
             LIMIT 100
         `, [ -period, monitorId ]);
-        
+
         res.json({
             ok: true,
             data: heartbeats
@@ -695,9 +715,9 @@ router.get("/api/v1/monitors/:id/heartbeats", authenticateToken, async (req, res
 router.get("/api/v1/notifications", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
-        const notifications = await R.find("notification", " user_id = ? ", [req.userId]);
-        
+
+        const notifications = await R.find("notification", " user_id = ? ", [ req.userId ]);
+
         res.json({
             ok: true,
             data: notifications.map(n => n.toJSON())
@@ -733,7 +753,7 @@ router.get("/api/v1/notifications", authenticateToken, async (req, res) => {
 router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const nodes = await R.getAll(`
             SELECT 
                 id,
@@ -748,7 +768,7 @@ router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
             FROM node 
             ORDER BY node_id ASC
         `);
-        
+
         res.json({
             ok: true,
             data: nodes
@@ -791,18 +811,18 @@ router.get("/api/v1/nodes", authenticateToken, async (req, res) => {
 router.get("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const nodeId = req.params.id; // 注意：這裡是字串，不是整數
-        
-        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
-        
+
+        const node = await R.findOne("node", " node_id = ? ", [ nodeId ]);
+
         if (!node) {
             return res.status(404).json({
                 ok: false,
                 msg: "Node not found"
             });
         }
-        
+
         res.json({
             ok: true,
             data: node
@@ -864,9 +884,9 @@ router.get("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
 router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const { node_id, node_name, host, is_primary } = req.body;
-        
+
         // Validation
         if (!node_id) {
             return res.status(400).json({
@@ -874,16 +894,16 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
                 msg: "Node ID is required"
             });
         }
-        
+
         // Check if node_id already exists
-        const existingNode = await R.findOne("node", " node_id = ? ", [node_id]);
+        const existingNode = await R.findOne("node", " node_id = ? ", [ node_id ]);
         if (existingNode) {
             return res.status(409).json({
                 ok: false,
                 msg: "Node ID already exists"
             });
         }
-        
+
         // Create new node
         const node = R.dispense("node");
         node.node_id = node_id;
@@ -893,9 +913,9 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
         node.status = "online";
         node.last_heartbeat = new Date();
         node.create = new Date();
-        
+
         await R.store(node);
-        
+
         res.status(201).json({
             ok: true,
             msg: "Node created successfully",
@@ -963,27 +983,35 @@ router.post("/api/v1/nodes", authenticateToken, async (req, res) => {
 router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const nodeId = req.params.id; // 字串
         const { node_name, host, is_primary, status } = req.body;
-        
-        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
-        
+
+        const node = await R.findOne("node", " node_id = ? ", [ nodeId ]);
+
         if (!node) {
             return res.status(404).json({
                 ok: false,
                 msg: "Node not found"
             });
         }
-        
+
         // Update node
-        if (node_name !== undefined) node.node_name = node_name;
-        if (host !== undefined) node.host = host;
-        if (is_primary !== undefined) node.is_primary = is_primary;
-        if (status) node.status = status;
-        
+        if (node_name !== undefined) {
+            node.node_name = node_name;
+        }
+        if (host !== undefined) {
+            node.host = host;
+        }
+        if (is_primary !== undefined) {
+            node.is_primary = is_primary;
+        }
+        if (status) {
+            node.status = status;
+        }
+
         await R.store(node);
-        
+
         res.json({
             ok: true,
             msg: "Node updated successfully",
@@ -1026,30 +1054,30 @@ router.put("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
 router.delete("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const nodeId = req.params.id; // 字串
-        
-        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
-        
+
+        const node = await R.findOne("node", " node_id = ? ", [ nodeId ]);
+
         if (!node) {
             return res.status(404).json({
                 ok: false,
                 msg: "Node not found"
             });
         }
-        
+
         // Check if node is assigned to any monitors
-        const assignedMonitors = await R.findOne("monitor", " node_id = ? ", [nodeId]);
+        const assignedMonitors = await R.findOne("monitor", " node_id = ? ", [ nodeId ]);
         if (assignedMonitors) {
             return res.status(400).json({
                 ok: false,
                 msg: "Cannot delete node that is assigned to monitors"
             });
         }
-        
+
         // Hard delete (since there's no active field)
-        await R.exec("DELETE FROM node WHERE node_id = ?", [nodeId]);
-        
+        await R.exec("DELETE FROM node WHERE node_id = ?", [ nodeId ]);
+
         res.json({
             ok: true,
             msg: "Node deleted successfully"
@@ -1092,18 +1120,18 @@ router.delete("/api/v1/nodes/:id", authenticateToken, async (req, res) => {
 router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const nodeId = req.params.id; // 字串
-        
-        const node = await R.findOne("node", " node_id = ? ", [nodeId]);
-        
+
+        const node = await R.findOne("node", " node_id = ? ", [ nodeId ]);
+
         if (!node) {
             return res.status(404).json({
                 ok: false,
                 msg: "Node not found"
             });
         }
-        
+
         const monitors = await R.getAll(`
             SELECT 
                 id, name, type, url, interval, active, status, 
@@ -1111,8 +1139,8 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
             FROM monitor 
             WHERE node_id = ? AND active = 1
             ORDER BY name ASC
-        `, [nodeId]);
-        
+        `, [ nodeId ]);
+
         res.json({
             ok: true,
             data: monitors
@@ -1246,7 +1274,7 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
 router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         // Validate required fields
         if (!req.body.name || !req.body.type) {
             return res.status(400).json({
@@ -1254,13 +1282,13 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
                 msg: "Missing required fields: name and type"
             });
         }
-        
+
         // Create new monitor
         const monitor = R.dispense("monitor");
         monitor.user_id = req.userId;
         monitor.name = req.body.name.trim();
         monitor.type = req.body.type;
-        
+
         // Set default values
         monitor.interval = req.body.interval || 60;
         monitor.active = req.body.active !== undefined ? req.body.active : true;
@@ -1269,21 +1297,48 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
         monitor.maxretries = req.body.maxretries || 0;
         monitor.upsideDown = req.body.upsideDown || false;
         monitor.ignoreTls = req.body.ignoreTls || false;
-        
+
         // Set type-specific fields
-        if (req.body.url) monitor.url = req.body.url;
-        if (req.body.hostname) monitor.hostname = req.body.hostname;
-        if (req.body.port) monitor.port = req.body.port;
-        if (req.body.method) monitor.method = req.body.method;
-        if (req.body.keyword) monitor.keyword = req.body.keyword;
-        if (req.body.invertKeyword !== undefined) monitor.invertKeyword = req.body.invertKeyword;
-        if (req.body.headers) monitor.headers = req.body.headers;
-        if (req.body.body) monitor.body = req.body.body;
-        if (req.body.basic_auth_user) monitor.basic_auth_user = req.body.basic_auth_user;
-        if (req.body.basic_auth_pass) monitor.basic_auth_pass = req.body.basic_auth_pass;
-        if (req.body.node_id) monitor.node_id = req.body.node_id;
-        if (req.body.description) monitor.description = req.body.description;
-        
+        if (req.body.url) {
+            monitor.url = req.body.url;
+        }
+        if (req.body.hostname) {
+            monitor.hostname = req.body.hostname;
+        }
+        if (req.body.port) {
+            monitor.port = req.body.port;
+        }
+        if (req.body.method) {
+            monitor.method = req.body.method;
+        }
+        if (req.body.keyword) {
+            monitor.keyword = req.body.keyword;
+        }
+        if (req.body.invertKeyword !== undefined) {
+            monitor.invertKeyword = req.body.invertKeyword;
+        }
+        if (req.body.headers) {
+            console.log("[REST API] Received headers:", req.body.headers);
+            console.log("[REST API] Headers type:", typeof req.body.headers);
+            monitor.headers = typeof req.body.headers === "string" ? req.body.headers : JSON.stringify(req.body.headers);
+            console.log("[REST API] Stored headers:", monitor.headers);
+        }
+        if (req.body.body) {
+            monitor.body = req.body.body;
+        }
+        if (req.body.basic_auth_user) {
+            monitor.basic_auth_user = req.body.basic_auth_user;
+        }
+        if (req.body.basic_auth_pass) {
+            monitor.basic_auth_pass = req.body.basic_auth_pass;
+        }
+        if (req.body.node_id) {
+            monitor.node_id = req.body.node_id;
+        }
+        if (req.body.description) {
+            monitor.description = req.body.description;
+        }
+
         // Validate monitor configuration
         try {
             monitor.validate();
@@ -1293,9 +1348,15 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
                 msg: error.message
             });
         }
-        
+
+        console.log("[REST API] Before store - monitor.headers:", monitor.headers);
         await R.store(monitor);
-        
+        console.log("[REST API] After store - monitor.id:", monitor.id, "monitor.headers:", monitor.headers);
+
+        // Verify the stored data
+        const storedMonitor = await R.findOne("monitor", " id = ? ", [ monitor.id ]);
+        console.log("[REST API] Verification - stored headers in DB:", storedMonitor.headers);
+
         res.status(201).json({
             ok: true,
             msg: "Monitor created successfully",
@@ -1306,7 +1367,7 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
                 active: monitor.active
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -1427,39 +1488,79 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
 router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const monitorId = parseInt(req.params.id);
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorId, req.userId]);
-        
+        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitorId, req.userId ]);
+
         if (!monitor) {
             return res.status(404).json({
                 ok: false,
                 msg: "Monitor not found"
             });
         }
-        
+
         // Update fields if provided
-        if (req.body.name !== undefined) monitor.name = req.body.name.trim();
-        if (req.body.url !== undefined) monitor.url = req.body.url;
-        if (req.body.hostname !== undefined) monitor.hostname = req.body.hostname;
-        if (req.body.port !== undefined) monitor.port = req.body.port;
-        if (req.body.interval !== undefined) monitor.interval = req.body.interval;
-        if (req.body.active !== undefined) monitor.active = req.body.active;
-        if (req.body.retryInterval !== undefined) monitor.retryInterval = req.body.retryInterval;
-        if (req.body.timeout !== undefined) monitor.timeout = req.body.timeout;
-        if (req.body.method !== undefined) monitor.method = req.body.method;
-        if (req.body.keyword !== undefined) monitor.keyword = req.body.keyword;
-        if (req.body.invertKeyword !== undefined) monitor.invertKeyword = req.body.invertKeyword;
-        if (req.body.headers !== undefined) monitor.headers = req.body.headers;
-        if (req.body.body !== undefined) monitor.body = req.body.body;
-        if (req.body.basic_auth_user !== undefined) monitor.basic_auth_user = req.body.basic_auth_user;
-        if (req.body.basic_auth_pass !== undefined) monitor.basic_auth_pass = req.body.basic_auth_pass;
-        if (req.body.maxretries !== undefined) monitor.maxretries = req.body.maxretries;
-        if (req.body.upsideDown !== undefined) monitor.upsideDown = req.body.upsideDown;
-        if (req.body.ignoreTls !== undefined) monitor.ignoreTls = req.body.ignoreTls;
-        if (req.body.description !== undefined) monitor.description = req.body.description;
-        if (req.body.node_id !== undefined) monitor.node_id = req.body.node_id;
-        
+        if (req.body.name !== undefined) {
+            monitor.name = req.body.name.trim();
+        }
+        if (req.body.url !== undefined) {
+            monitor.url = req.body.url;
+        }
+        if (req.body.hostname !== undefined) {
+            monitor.hostname = req.body.hostname;
+        }
+        if (req.body.port !== undefined) {
+            monitor.port = req.body.port;
+        }
+        if (req.body.interval !== undefined) {
+            monitor.interval = req.body.interval;
+        }
+        if (req.body.active !== undefined) {
+            monitor.active = req.body.active;
+        }
+        if (req.body.retryInterval !== undefined) {
+            monitor.retryInterval = req.body.retryInterval;
+        }
+        if (req.body.timeout !== undefined) {
+            monitor.timeout = req.body.timeout;
+        }
+        if (req.body.method !== undefined) {
+            monitor.method = req.body.method;
+        }
+        if (req.body.keyword !== undefined) {
+            monitor.keyword = req.body.keyword;
+        }
+        if (req.body.invertKeyword !== undefined) {
+            monitor.invertKeyword = req.body.invertKeyword;
+        }
+        if (req.body.headers !== undefined) {
+            monitor.headers = typeof req.body.headers === "string" ? req.body.headers : JSON.stringify(req.body.headers);
+        }
+        if (req.body.body !== undefined) {
+            monitor.body = req.body.body;
+        }
+        if (req.body.basic_auth_user !== undefined) {
+            monitor.basic_auth_user = req.body.basic_auth_user;
+        }
+        if (req.body.basic_auth_pass !== undefined) {
+            monitor.basic_auth_pass = req.body.basic_auth_pass;
+        }
+        if (req.body.maxretries !== undefined) {
+            monitor.maxretries = req.body.maxretries;
+        }
+        if (req.body.upsideDown !== undefined) {
+            monitor.upsideDown = req.body.upsideDown;
+        }
+        if (req.body.ignoreTls !== undefined) {
+            monitor.ignoreTls = req.body.ignoreTls;
+        }
+        if (req.body.description !== undefined) {
+            monitor.description = req.body.description;
+        }
+        if (req.body.node_id !== undefined) {
+            monitor.node_id = req.body.node_id;
+        }
+
         // Validate monitor configuration
         try {
             monitor.validate();
@@ -1469,9 +1570,9 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
                 msg: error.message
             });
         }
-        
+
         await R.store(monitor);
-        
+
         res.json({
             ok: true,
             msg: "Monitor updated successfully",
@@ -1482,7 +1583,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
                 active: monitor.active
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -1535,14 +1636,14 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
 router.get("/api/v1/status-pages", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const statusPages = await R.findAll("status_page", " ORDER BY created_date DESC ");
         const statusPageList = [];
-        
+
         for (let statusPage of statusPages) {
             statusPageList.push(await statusPage.toJSON());
         }
-        
+
         res.json({
             ok: true,
             data: statusPageList
@@ -1673,7 +1774,7 @@ router.post("/api/v1/status-pages", authenticateToken, [
 ], async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({
@@ -1682,10 +1783,10 @@ router.post("/api/v1/status-pages", authenticateToken, [
                 errors: errors.array()
             });
         }
-        
+
         let title = req.body.title?.trim();
         let slug = req.body.slug?.trim();
-        
+
         // Check empty
         if (!title || !slug) {
             return res.status(400).json({
@@ -1693,7 +1794,7 @@ router.post("/api/v1/status-pages", authenticateToken, [
                 msg: "Please input all fields"
             });
         }
-        
+
         // Make sure slug is string
         if (typeof slug !== "string") {
             return res.status(400).json({
@@ -1701,10 +1802,10 @@ router.post("/api/v1/status-pages", authenticateToken, [
                 msg: "Slug - Accept string only"
             });
         }
-        
+
         // lower case only
         slug = slug.toLowerCase();
-        
+
         // Check slug format (a-z, 0-9, - only, no consecutive dashes)
         if (!slug.match(/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/)) {
             return res.status(400).json({
@@ -1712,16 +1813,16 @@ router.post("/api/v1/status-pages", authenticateToken, [
                 msg: "Invalid slug format. Only a-z, 0-9, - allowed, no consecutive dashes"
             });
         }
-        
+
         // Check if slug already exists
-        const existingStatusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        const existingStatusPage = await R.findOne("status_page", " slug = ? ", [ slug ]);
         if (existingStatusPage) {
             return res.status(400).json({
                 ok: false,
                 msg: "Slug already exists"
             });
         }
-        
+
         let statusPage = R.dispense("status_page");
         statusPage.slug = slug;
         statusPage.title = title;
@@ -1734,49 +1835,49 @@ router.post("/api/v1/status-pages", authenticateToken, [
         statusPage.show_tags = req.body.show_tags !== undefined ? req.body.show_tags : false;
         statusPage.show_powered_by = req.body.show_powered_by !== undefined ? req.body.show_powered_by : true;
         statusPage.show_certificate_expiry = req.body.show_certificate_expiry !== undefined ? req.body.show_certificate_expiry : false;
-        
+
         await R.store(statusPage);
-        
+
         // Handle publicGroupList if provided
         if (req.body.publicGroupList && Array.isArray(req.body.publicGroupList)) {
             let groupOrder = 1;
-            
+
             for (let group of req.body.publicGroupList) {
                 const groupBean = R.dispense("group");
                 groupBean.status_page_id = statusPage.id;
                 groupBean.name = group.name;
                 groupBean.public = true;
                 groupBean.weight = groupOrder++;
-                
+
                 await R.store(groupBean);
-                
+
                 let monitorOrder = 1;
-                
+
                 if (group.monitorList && Array.isArray(group.monitorList)) {
                     for (let monitor of group.monitorList) {
                         // Verify monitor exists
-                        const monitorBean = await R.findOne("monitor", " id = ? ", [monitor.id]);
+                        const monitorBean = await R.findOne("monitor", " id = ? ", [ monitor.id ]);
                         if (monitorBean) {
                             const relationBean = R.dispense("monitor_group");
                             relationBean.weight = monitorOrder++;
                             relationBean.group_id = groupBean.id;
                             relationBean.monitor_id = monitor.id;
-                            
+
                             if (monitor.sendUrl !== undefined) {
                                 relationBean.send_url = monitor.sendUrl;
                             }
-                            
+
                             if (monitor.url !== undefined) {
                                 relationBean.custom_url = monitor.url;
                             }
-                            
+
                             await R.store(relationBean);
                         }
                     }
                 }
             }
         }
-        
+
         res.status(201).json({
             ok: true,
             msg: "Status page created successfully",
@@ -1786,7 +1887,7 @@ router.post("/api/v1/status-pages", authenticateToken, [
                 title: statusPage.title
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -1889,38 +1990,38 @@ router.post("/api/v1/status-pages", authenticateToken, [
 router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const slug = req.params.slug.toLowerCase();
-        const statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
-        
+        const statusPage = await R.findOne("status_page", " slug = ? ", [ slug ]);
+
         if (!statusPage) {
             return res.status(404).json({
                 ok: false,
                 msg: "Status page not found"
             });
         }
-        
+
         // Get basic status page data
         const basicData = await statusPage.toJSON();
-        
+
         // Get public groups with monitors if requested
         let publicGroupList = [];
-        if (req.query.includeGroups === 'true') {
+        if (req.query.includeGroups === "true") {
             const list = await R.find("group", " public = 1 AND status_page_id = ? ORDER BY weight ", [
                 statusPage.id
             ]);
-            
+
             for (let groupBean of list) {
                 let monitorGroup = await groupBean.toPublicJSON(false, false);
                 publicGroupList.push(monitorGroup);
             }
         }
-        
+
         const responseData = {
             ...basicData,
-            ...(req.query.includeGroups === 'true' && { publicGroupList })
+            ...(req.query.includeGroups === "true" && { publicGroupList })
         };
-        
+
         res.json({
             ok: true,
             data: responseData
@@ -2045,17 +2146,17 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
 router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const slug = req.params.slug.toLowerCase();
-        const statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
-        
+        const statusPage = await R.findOne("status_page", " slug = ? ", [ slug ]);
+
         if (!statusPage) {
             return res.status(404).json({
                 ok: false,
                 msg: "Status page not found"
             });
         }
-        
+
         // Update fields if provided
         if (req.body.title !== undefined) {
             statusPage.title = req.body.title.trim();
@@ -2087,11 +2188,11 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
         if (req.body.show_certificate_expiry !== undefined) {
             statusPage.show_certificate_expiry = req.body.show_certificate_expiry;
         }
-        
+
         statusPage.modified_date = R.isoDateTime();
-        
+
         await R.store(statusPage);
-        
+
         // Handle publicGroupList if provided
         if (req.body.publicGroupList && Array.isArray(req.body.publicGroupList)) {
             const groupIDList = [];
@@ -2155,7 +2256,7 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
                 await R.exec(`DELETE FROM \`group\` WHERE id NOT IN (${slots}) AND status_page_id = ?`, data);
             }
         }
-        
+
         res.json({
             ok: true,
             msg: "Status page updated successfully",
@@ -2165,7 +2266,7 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
                 title: statusPage.title
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -2210,27 +2311,27 @@ router.put("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
 router.delete("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const slug = req.params.slug.toLowerCase();
         const statusPageID = await StatusPage.slugToID(slug);
-        
+
         if (!statusPageID) {
             return res.status(404).json({
                 ok: false,
                 msg: "Status page not found"
             });
         }
-        
+
         // Delete related records
-        await R.exec("DELETE FROM incident WHERE status_page_id = ? ", [statusPageID]);
-        await R.exec("DELETE FROM `group` WHERE status_page_id = ? ", [statusPageID]);
-        await R.exec("DELETE FROM status_page WHERE id = ? ", [statusPageID]);
-        
+        await R.exec("DELETE FROM incident WHERE status_page_id = ? ", [ statusPageID ]);
+        await R.exec("DELETE FROM `group` WHERE status_page_id = ? ", [ statusPageID ]);
+        await R.exec("DELETE FROM status_page WHERE id = ? ", [ statusPageID ]);
+
         res.json({
             ok: true,
             msg: "Status page deleted successfully"
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -2319,7 +2420,7 @@ router.delete("/api/v1/status-pages/:slug", authenticateToken, async (req, res) 
 router.post("/api/v1/groups", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         // Validate required fields
         if (!req.body.name || !req.body.status_page_id) {
             return res.status(400).json({
@@ -2327,51 +2428,51 @@ router.post("/api/v1/groups", authenticateToken, async (req, res) => {
                 msg: "Missing required fields: name and status_page_id"
             });
         }
-        
+
         // Verify status page exists
-        const statusPage = await R.findOne("status_page", " id = ? ", [req.body.status_page_id]);
+        const statusPage = await R.findOne("status_page", " id = ? ", [ req.body.status_page_id ]);
         if (!statusPage) {
             return res.status(404).json({
                 ok: false,
                 msg: "Status page not found"
             });
         }
-        
+
         // Create new group
         const group = R.dispense("group");
         group.name = req.body.name.trim();
         group.status_page_id = req.body.status_page_id;
         group.public = req.body.public !== undefined ? req.body.public : true;
         group.weight = req.body.weight || 1;
-        
+
         await R.store(group);
-        
+
         // Handle monitor list if provided
         if (req.body.monitorList && Array.isArray(req.body.monitorList)) {
             let monitorOrder = 1;
-            
+
             for (let monitor of req.body.monitorList) {
                 // Verify monitor exists and belongs to user
-                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitor.id, req.userId]);
+                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitor.id, req.userId ]);
                 if (monitorBean) {
                     const relationBean = R.dispense("monitor_group");
                     relationBean.weight = monitor.weight || monitorOrder++;
                     relationBean.group_id = group.id;
                     relationBean.monitor_id = monitor.id;
-                    
+
                     if (monitor.sendUrl !== undefined) {
                         relationBean.send_url = monitor.sendUrl;
                     }
-                    
+
                     if (monitor.url !== undefined) {
                         relationBean.custom_url = monitor.url;
                     }
-                    
+
                     await R.store(relationBean);
                 }
             }
         }
-        
+
         res.status(201).json({
             ok: true,
             msg: "Group created successfully",
@@ -2383,7 +2484,7 @@ router.post("/api/v1/groups", authenticateToken, async (req, res) => {
                 weight: group.weight
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -2471,53 +2572,59 @@ router.post("/api/v1/groups", authenticateToken, async (req, res) => {
 router.put("/api/v1/groups/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const groupId = parseInt(req.params.id);
-        const group = await R.findOne("group", " id = ? ", [groupId]);
-        
+        const group = await R.findOne("group", " id = ? ", [ groupId ]);
+
         if (!group) {
             return res.status(404).json({
                 ok: false,
                 msg: "Group not found"
             });
         }
-        
+
         // Update fields if provided
-        if (req.body.name !== undefined) group.name = req.body.name.trim();
-        if (req.body.public !== undefined) group.public = req.body.public;
-        if (req.body.weight !== undefined) group.weight = req.body.weight;
-        
+        if (req.body.name !== undefined) {
+            group.name = req.body.name.trim();
+        }
+        if (req.body.public !== undefined) {
+            group.public = req.body.public;
+        }
+        if (req.body.weight !== undefined) {
+            group.weight = req.body.weight;
+        }
+
         await R.store(group);
-        
+
         // Handle monitor list if provided
         if (req.body.monitorList && Array.isArray(req.body.monitorList)) {
             // Clear existing monitor relationships for this group
-            await R.exec("DELETE FROM monitor_group WHERE group_id = ? ", [group.id]);
-            
+            await R.exec("DELETE FROM monitor_group WHERE group_id = ? ", [ group.id ]);
+
             let monitorOrder = 1;
-            
+
             for (let monitor of req.body.monitorList) {
                 // Verify monitor exists and belongs to user
-                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitor.id, req.userId]);
+                const monitorBean = await R.findOne("monitor", " id = ? AND user_id = ? ", [ monitor.id, req.userId ]);
                 if (monitorBean) {
                     const relationBean = R.dispense("monitor_group");
                     relationBean.weight = monitor.weight || monitorOrder++;
                     relationBean.group_id = group.id;
                     relationBean.monitor_id = monitor.id;
-                    
+
                     if (monitor.sendUrl !== undefined) {
                         relationBean.send_url = monitor.sendUrl;
                     }
-                    
+
                     if (monitor.url !== undefined) {
                         relationBean.custom_url = monitor.url;
                     }
-                    
+
                     await R.store(relationBean);
                 }
             }
         }
-        
+
         res.json({
             ok: true,
             msg: "Group updated successfully",
@@ -2528,7 +2635,7 @@ router.put("/api/v1/groups/:id", authenticateToken, async (req, res) => {
                 weight: group.weight
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -2587,21 +2694,21 @@ router.put("/api/v1/groups/:id", authenticateToken, async (req, res) => {
 router.get("/api/v1/groups/:id", authenticateToken, async (req, res) => {
     try {
         allowAllOrigin(res);
-        
+
         const groupId = parseInt(req.params.id);
-        const group = await R.findOne("group", " id = ? ", [groupId]);
-        
+        const group = await R.findOne("group", " id = ? ", [ groupId ]);
+
         if (!group) {
             return res.status(404).json({
                 ok: false,
                 msg: "Group not found"
             });
         }
-        
+
         // Get group with monitors
         const groupBean = await R.load("group", groupId);
         const groupData = await groupBean.toPublicJSON();
-        
+
         res.json({
             ok: true,
             data: {
@@ -2613,7 +2720,7 @@ router.get("/api/v1/groups/:id", authenticateToken, async (req, res) => {
                 monitorList: groupData.monitorList || []
             }
         });
-        
+
     } catch (error) {
         console.error(error);
         sendHttpError(res, error.message);
@@ -2720,7 +2827,7 @@ router.get("/api/v1/groups/:id", authenticateToken, async (req, res) => {
 // Health check endpoint (public, no auth required, no rate limiting)
 router.get("/api/v1/health", async (req, res) => {
     allowAllOrigin(res);
-    
+
     const startTime = Date.now();
     const healthCheck = {
         ok: true,
@@ -2738,7 +2845,7 @@ router.get("/api/v1/health", async (req, res) => {
             // Try to execute a simple query to check database connectivity
             await R.exec("SELECT 1");
             const dbResponseTime = Date.now() - dbStartTime;
-            
+
             healthCheck.checks.database = {
                 status: "healthy",
                 responseTime: dbResponseTime
@@ -2755,7 +2862,7 @@ router.get("/api/v1/health", async (req, res) => {
 
         // Check server health
         const memoryUsage = process.memoryUsage();
-        const totalMemory = require('os').totalmem();
+        const totalMemory = require("os").totalmem();
         const usedMemory = memoryUsage.heapUsed;
         const memoryPercentage = (usedMemory / totalMemory) * 100;
 
@@ -2776,10 +2883,10 @@ router.get("/api/v1/health", async (req, res) => {
 
         // Check disk space if available (optional)
         try {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require("fs");
+            const path = require("path");
             const dataDir = process.env.DATA_DIR || "./data/";
-            
+
             if (fs.existsSync(dataDir)) {
                 const stats = fs.statSync(dataDir);
                 healthCheck.checks.disk = {
@@ -2797,8 +2904,8 @@ router.get("/api/v1/health", async (req, res) => {
         }
 
         // Check if any critical checks failed
-        const criticalChecks = ['database'];
-        const hasCriticalFailures = criticalChecks.some(check => 
+        const criticalChecks = [ "database" ];
+        const hasCriticalFailures = criticalChecks.some(check =>
             healthCheck.checks[check] && healthCheck.checks[check].status === "unhealthy"
         );
 
@@ -2818,9 +2925,9 @@ router.get("/api/v1/health", async (req, res) => {
         healthCheck.status = "error";
         healthCheck.error = error.message;
         healthCheck.responseTime = Date.now() - startTime;
-        
+
         res.status(503).json(healthCheck);
     }
 });
 
-module.exports = router; 
+module.exports = router;

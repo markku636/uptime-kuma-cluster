@@ -21,7 +21,7 @@
         "start-frontend-dev": "cross-env NODE_ENV=development vite --host --config ./config/vite.config.js",
         "start-frontend-devcontainer": "cross-env NODE_ENV=development DEVCONTAINER=1 vite --host --config ./config/vite.config.js",
         "start": "npm run start-server",
-        "start-server": "cross-env DB_HOST=mariadb DB_PORT=3306 DB_USER=kuma DB_PASSWORD=kuma_pass DB_NAME=kuma EMMY_DEBUG_ENABLED=true EMMY_DEBUG_HOST=0.0.0.0 EMMY_DEBUG_PORT=9966 node server/server.js",
+        "start-server": "cross-env UPTIME_KUMA_DB_TYPE=mariadb UPTIME_KUMA_DB_HOSTNAME=192.168.201.101 UPTIME_KUMA_DB_PORT=9090 UPTIME_KUMA_DB_NAME=kuma UPTIME_KUMA_DB_USERNAME=kuma UPTIME_KUMA_DB_PASSWORD=kuma_pass UPTIME_KUMA_NODE_ID=node1 UPTIME_KUMA_NODE_NAME=node1 UPTIME_KUMA_NODE_HOST=uptime-kuma-node1:3001 UPTIME_KUMA_FORCE_MIGRATE=true node server/server.js",
         "start-server-dev": "cross-env NODE_ENV=development node server/server.js",
         "start-server-dev:watch": "cross-env NODE_ENV=development node --watch server/server.js",
         "build": "vite build --config ./config/vite.config.js",

@@ -3,8 +3,8 @@
 ### 進入swagger  /api-docs ，因為官方bug ，進入這頁面得輸入 /api-docs.json 在按下explorer 
 
 # 基礎 URL 配置
-@baseUrl = http://192.168.99.88:9091
-@apiKey = uk1_SIDZNvdGb6dLKvtBJEfoYhoDTAwIn68aqlO-HwZN
+@baseUrl = http://127.0.0.1:3001
+@apiKey = uk1_ke1fFdazKdwEpdKpqjgnPGBhV7krGSK3ED1iqXZj
 
 ### 1. 測試 API 狀態
 GET {{baseUrl}}/api/v1/status
@@ -39,12 +39,12 @@ Authorization: {{apiKey}}
 Content-Type: application/json
 
 {
-  "name": "測試 Ping",
+  "name": "測試 Ping",  
   "type": "ping",
   "hostname": "8.8.8.8",
   "interval": 60,
   "active": true,
-  "retryInterval": 30
+  "retryInterval": 30  
 }
 
 ### 11. 創建一個 DNS monitor
@@ -230,13 +230,14 @@ Content-Type: application/json
 
 {
   "name": "新的HTTP監控器",
-  "type": "http",
+  "type": "http",  
   "url": "https://httpbin.org/status/200",
   "interval": 60,
   "active": true,
   "retryInterval": 30,
   "timeout": 10,
   "method": "GET",
+  "headers": "{\"User-Agent\": \"Kuma-Test\"}",
   "node_id": "node1",
   "description": "通過 REST API 創建的 HTTP 監控器"
 }
