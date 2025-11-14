@@ -1534,10 +1534,17 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
             monitor.invertKeyword = req.body.invertKeyword;
         }
         if (req.body.headers !== undefined) {
+            console.log("[REST API PUT] Received headers:", req.body.headers);
+            console.log("[REST API PUT] Headers type:", typeof req.body.headers);
+            console.log("[REST API PUT] Before update - monitor.headers:", monitor.headers);
             monitor.headers = typeof req.body.headers === "string" ? req.body.headers : JSON.stringify(req.body.headers);
+            console.log("[REST API PUT] After update - monitor.headers:", monitor.headers);
         }
         if (req.body.body !== undefined) {
-            monitor.body = req.body.body;
+            console.log("[REST API PUT] Received body:", req.body.body);
+            console.log("[REST API PUT] Body type:", typeof req.body.body);
+            monitor.body = typeof req.body.body === "string" ? req.body.body : JSON.stringify(req.body.body);
+            console.log("[REST API PUT] After update - monitor.body:", monitor.body);
         }
         if (req.body.basic_auth_user !== undefined) {
             monitor.basic_auth_user = req.body.basic_auth_user;
@@ -1571,7 +1578,15 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
             });
         }
 
+        console.log("[REST API PUT] Before store - monitor.headers:", monitor.headers);
+        console.log("[REST API PUT] Before store - monitor.body:", monitor.body);
         await R.store(monitor);
+        console.log("[REST API PUT] After store - monitor.id:", monitor.id);
+
+        // Verify the stored data
+        const storedMonitor = await R.findOne("monitor", " id = ? ", [ monitor.id ]);
+        console.log("[REST API PUT] Verification - stored headers in DB:", storedMonitor.headers);
+        console.log("[REST API PUT] Verification - stored body in DB:", storedMonitor.body);
 
         res.json({
             ok: true,
