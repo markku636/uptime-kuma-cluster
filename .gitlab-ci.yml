@@ -1,5 +1,4 @@
-stages:
-  - check
+stages:  
   - build
   - deploy
   - cleanup
