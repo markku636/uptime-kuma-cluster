@@ -1,4 +1,5 @@
-stages:  
+stages:
+  # - check
   - build
   - deploy
   - cleanup
@@ -6,57 +7,57 @@ stages:
 variables:
   IMAGE: $AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME:${CI_PIPELINE_ID}
 
-check_network:
-  stage: check
-  script:
-    # 檢查網路是否存在，若不存在則建立為 Docker bridge 網路
-    - docker network ls
-
-    - |
-      NETWORK_NAME="kuma-network"
-      echo "Checking for network: ${NETWORK_NAME}"
-      if ! docker network inspect ${NETWORK_NAME} > /dev/null 2>&1; then
-        echo "Network ${NETWORK_NAME} not found. Creating Docker bridge network..."
-        docker network create --driver bridge ${NETWORK_NAME}
-      else
-        echo "Network ${NETWORK_NAME} already exists."
-      fi
-  tags:
-    - Development.IISI_Banqiao.docker
-  allow_failure: false
-
-check_remote_directory:
-  stage: check
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache openssh-client
-    - mkdir -p ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - ssh-keyscan -p "$DEPLOY_PORT" -H $DEPLOY_HOST >> ~/.ssh/known_hosts
-  script:
-    - echo "開始檢查遠端主機 $DEPLOY_HOST ..."
-    - echo "REMOTE_DIRS = $REMOTE_DIRS"
-    - |
-      for DIR in $REMOTE_DIRS; do
-        echo "=== 檢查並建立: $DIR ==="
-        ssh -p "$DEPLOY_PORT" -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST "
-          set -e
-          if [ ! -d '$DIR' ]; then
-            echo '$DIR 資料夾不存在，正在建立...';
-            sudo mkdir -p '$DIR';
-          else
-            echo '$DIR 資料夾已存在';
-          fi
-
-          sudo chmod 775 '$DIR'
-          echo '已將 $DIR 權限設為 775'
-        "
-      done
-  tags:
-    - Development.IISI_Banqiao.docker
-  variables:
-    REMOTE_DIRS: "/data/volume/uptimekuma"
+# check_network:
+#   stage: check
+#   script:
+#     # 檢查網路是否存在，若不存在則建立為 Docker bridge 網路
+#     - docker network ls
+# 
+#     - |
+#       NETWORK_NAME="kuma-network"
+#       echo "Checking for network: ${NETWORK_NAME}"
+#       if ! docker network inspect ${NETWORK_NAME} > /dev/null 2>&1; then
+#         echo "Network ${NETWORK_NAME} not found. Creating Docker bridge network..."
+#         docker network create --driver bridge ${NETWORK_NAME}
+#       else
+#         echo "Network ${NETWORK_NAME} already exists."
+#       fi
+#   tags:
+#     - Development.IISI_Banqiao.docker
+#   allow_failure: false
+# 
+# check_remote_directory:
+#   stage: check
+#   image: alpine:latest
+#   before_script:
+#     - apk add --no-cache openssh-client
+#     - mkdir -p ~/.ssh
+#     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+#     - chmod 600 ~/.ssh/id_rsa
+#     - ssh-keyscan -p "$DEPLOY_PORT" -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+#   script:
+#     - echo "開始檢查遠端主機 $DEPLOY_HOST ..."
+#     - echo "REMOTE_DIRS = $REMOTE_DIRS"
+#     - |
+#       for DIR in $REMOTE_DIRS; do
+#         echo "=== 檢查並建立: $DIR ==="
+#         ssh -p "$DEPLOY_PORT" -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_HOST "
+#           set -e
+#           if [ ! -d '$DIR' ]; then
+#             echo '$DIR 資料夾不存在，正在建立...';
+#             sudo mkdir -p '$DIR';
+#           else
+#             echo '$DIR 資料夾已存在';
+#           fi
+# 
+#           sudo chmod 775 '$DIR'
+#           echo '已將 $DIR 權限設為 775'
+#         "
+#       done
+#   tags:
+#     - Development.IISI_Banqiao.docker
+#   variables:
+#     REMOTE_DIRS: "/data/volume/uptimekuma"
 
 build:
   stage: build
