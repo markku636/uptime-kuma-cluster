@@ -1336,7 +1336,9 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
             monitor.node_id = req.body.node_id;
         }
         if (req.body.description) {
+            console.log("[REST API POST] Received description:", req.body.description);
             monitor.description = req.body.description;
+            console.log("[REST API POST] Set monitor.description:", monitor.description);
         }
 
         // Validate monitor configuration
@@ -1350,12 +1352,15 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
         }
 
         console.log("[REST API] Before store - monitor.headers:", monitor.headers);
+        console.log("[REST API] Before store - monitor.description:", monitor.description);
         await R.store(monitor);
         console.log("[REST API] After store - monitor.id:", monitor.id, "monitor.headers:", monitor.headers);
+        console.log("[REST API] After store - monitor.description:", monitor.description);
 
         // Verify the stored data
         const storedMonitor = await R.findOne("monitor", " id = ? ", [ monitor.id ]);
         console.log("[REST API] Verification - stored headers in DB:", storedMonitor.headers);
+        console.log("[REST API] Verification - stored description in DB:", storedMonitor.description);
 
         res.status(201).json({
             ok: true,
@@ -1562,7 +1567,10 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
             monitor.ignoreTls = req.body.ignoreTls;
         }
         if (req.body.description !== undefined) {
+            console.log("[REST API PUT] Received description:", req.body.description);
+            console.log("[REST API PUT] Before update - monitor.description:", monitor.description);
             monitor.description = req.body.description;
+            console.log("[REST API PUT] After update - monitor.description:", monitor.description);
         }
         if (req.body.node_id !== undefined) {
             monitor.node_id = req.body.node_id;
@@ -1580,6 +1588,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
 
         console.log("[REST API PUT] Before store - monitor.headers:", monitor.headers);
         console.log("[REST API PUT] Before store - monitor.body:", monitor.body);
+        console.log("[REST API PUT] Before store - monitor.description:", monitor.description);
         await R.store(monitor);
         console.log("[REST API PUT] After store - monitor.id:", monitor.id);
 
@@ -1587,6 +1596,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
         const storedMonitor = await R.findOne("monitor", " id = ? ", [ monitor.id ]);
         console.log("[REST API PUT] Verification - stored headers in DB:", storedMonitor.headers);
         console.log("[REST API PUT] Verification - stored body in DB:", storedMonitor.body);
+        console.log("[REST API PUT] Verification - stored description in DB:", storedMonitor.description);
 
         res.json({
             ok: true,
