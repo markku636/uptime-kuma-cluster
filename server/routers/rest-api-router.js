@@ -546,6 +546,15 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
             monitor.active = req.body.active;
         }
 
+        if (req.body.description !== undefined) {
+            monitor.description = req.body.description;
+        }
+
+        // headers
+        if (req.body.headers) {
+            monitor.headers = typeof req.body.headers === "string" ? req.body.headers : JSON.stringify(req.body.headers);
+        }
+
         await R.store(monitor);
 
         // Restart the monitor if it's active (same logic as UI editing)
