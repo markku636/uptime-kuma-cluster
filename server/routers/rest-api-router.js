@@ -442,6 +442,7 @@ router.post("/api/v1/monitors", authenticateToken, [
         monitor.interval = req.body.interval || 60;
         monitor.active = req.body.active !== false;
         monitor.user_id = req.userId;
+        monitor.description = req.body.description || "";
 
         // 設定 node_id（如果提供）
         if (req.body.node_id) {
@@ -1492,6 +1493,12 @@ router.post("/api/v1/monitors", authenticateToken, async (req, res) => {
  */
 router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
     try {
+        console.log("========================================");
+        console.log("[REST API PUT] Starting monitor update");
+        console.log("[REST API PUT] Monitor ID:", req.params.id);
+        console.log("[REST API PUT] Request body:", JSON.stringify(req.body, null, 2));
+        console.log("========================================");
+
         allowAllOrigin(res);
 
         const monitorId = parseInt(req.params.id);
