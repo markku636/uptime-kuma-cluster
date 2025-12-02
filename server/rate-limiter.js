@@ -55,7 +55,7 @@ const loginRateLimiter = new KumaRateLimiter({
 });
 
 const apiRateLimiter = new KumaRateLimiter({
-    tokensPerInterval: 60,
+    tokensPerInterval: parseInt(process.env.API_RATE_LIMIT) || 60,
     interval: "minute",
     fireImmediately: true,
     errorMessage: "Too frequently, try again later."
