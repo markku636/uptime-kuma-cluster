@@ -1,4 +1,5 @@
 const { RateLimiter } = require("limiter");
+const rateLimit = require("express-rate-limit");
 const { log } = require("../src/util");
 
 class KumaRateLimiter {
@@ -55,7 +56,7 @@ const loginRateLimiter = new KumaRateLimiter({
 });
 
 const apiRateLimiter = new KumaRateLimiter({
-    tokensPerInterval: parseInt(process.env.API_RATE_LIMIT) || 60,
+    tokensPerInterval: 60,
     interval: "minute",
     fireImmediately: true,
     errorMessage: "Too frequently, try again later."
@@ -68,8 +69,16 @@ const twoFaRateLimiter = new KumaRateLimiter({
     errorMessage: "Too frequently, try again later."
 });
 
+// Express rate limiting for REST API
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: parseInt(process.env.API_RATE_LIMIT) || 100, // limit each IP to requests per windowMs
+    message: "Too many API requests from this IP, please try again later."
+});
+
 module.exports = {
     loginRateLimiter,
     apiRateLimiter,
     twoFaRateLimiter,
+    apiLimiter,
 };

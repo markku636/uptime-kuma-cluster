@@ -12,18 +12,11 @@ const {
     allowAllOrigin
 } = require("../util-server");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
-const rateLimit = require("express-rate-limit");
+const { apiLimiter } = require("../rate-limiter");
 const { reconcileMonitors } = require("../monitor-reconciler");
 const { body, validationResult } = require("express-validator");
 
 const router = express.Router();
-
-// Rate limiting
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: "Too many API requests from this IP, please try again later."
-});
 
 // Apply rate limiting to all API routes except health check
 router.use("/api/v1", (req, res, next) => {
