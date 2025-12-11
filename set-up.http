@@ -1,8 +1,8 @@
 ### Kuma API 測試範例
 
 # 基礎 URL 變數
-@baseUrl = http://192.168.99.88:8084
-# http://192.168.99.88:8084/
+@baseUrl = http://localhost:8084
+# http://localhost:8084/
 @apiKey = uk4_scu5NRFWKpk4ZGB0kpjkcl3v2iJ4yEkBlMou5C6t
 
 ### 測試 API 狀態
