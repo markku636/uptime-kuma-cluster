@@ -1,53 +1,35 @@
-這是一份經過優化、格式整理且語氣更專業的 README 版本。我根據你提供的內容進行了以下改進：
-
-1.  **結構優化**：增加了徽章（Badges）讓視覺更專業，並優化了目錄結構。
-2.  **視覺增強**：優化了 ASCII 架構圖的對齊，並為各個章節添加了適當的 Emoji 以提升閱讀體驗。
-3.  **代碼區塊**：將原本散落的配置和命令統一放入代碼塊（Code Blocks）中，並標註語言（Lua, Nginx, Bash），方便複製與閱讀。
-4.  **API 表格化**：雖然保留了列表，但我將 API 描述整理得更清晰。
-5.  **語言潤飾**：將部分用語調整為更標準的技術文檔風格（例如將「幫我修更新」轉化為專業的文檔描述）。
-
-你可以直接複製下面的 Markdown 代碼使用。
-
------
-
-# Nginx OpenResty 負載平衡與健康檢查系統 (Uptime Kuma Cluster)
-
-\<div align="center"\>
-\<img src="./public/icon.svg" width="128" alt="System Icon" /\>
-\<p\>
-\<strong\>基於 Nginx OpenResty 的智能負載平衡與高可用性解決方案\</strong\>
-\</p\>
-\<p\>
-\<a href="[https://openresty.org/](https://openresty.org/)"\>
-\<img src="[https://img.shields.io/badge/Nginx-OpenResty-green?style=flat-square\&logo=nginx](https://www.google.com/search?q=https://img.shields.io/badge/Nginx-OpenResty-green%3Fstyle%3Dflat-square%26logo%3Dnginx)" alt="OpenResty"\>
-\</a\>
-\<a href="[https://www.lua.org/](https://www.lua.org/)"\>
-\<img src="[https://img.shields.io/badge/Lua-5.1-blue?style=flat-square\&logo=lua](https://www.google.com/search?q=https://img.shields.io/badge/Lua-5.1-blue%3Fstyle%3Dflat-square%26logo%3Dlua)" alt="Lua"\>
-\</a\>
-\<a href="[https://uptime.kuma.pet/](https://uptime.kuma.pet/)"\>
-\<img src="[https://img.shields.io/badge/Uptime%20Kuma-Cluster-purple?style=flat-square](https://www.google.com/search?q=https://img.shields.io/badge/Uptime%2520Kuma-Cluster-purple%3Fstyle%3Dflat-square)" alt="Uptime Kuma"\>
-\</a\>
-\</p\>
-\</div\>
-
------
-
-## 📋 目錄
-
-  - [系統概述](https://www.google.com/search?q=%23-%E7%B3%BB%E7%B5%B1%E6%A6%82%E8%BF%B0)
-  - [功能特性](https://www.google.com/search?q=%23-%E5%8A%9F%E8%83%BD%E7%89%B9%E6%80%A7)
-  - [架構設計](https://www.google.com/search?q=%23-%E6%9E%B6%E6%A7%8B%E8%A8%AD%E8%A8%88)
-  - [模組說明](https://www.google.com/search?q=%23-%E6%A8%A1%E7%B5%84%E8%AA%AA%E6%98%8E)
-  - [API 接口](https://www.google.com/search?q=%23-api-%E6%8E%A5%E5%8F%A3)
-  - [配置說明](https://www.google.com/search?q=%23-%E9%85%8D%E7%BD%AE%E8%AA%AA%E6%98%8E)
-  - [部署指南](https://www.google.com/search?q=%23-%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97)
-  - [監控與維護](https://www.google.com/search?q=%23-%E7%9B%A3%E6%8E%A7%E8%88%87%E7%B6%AD%E8%AD%B7)
 
 -----
 
 ## 🎯 系統概述
 
 本專案是一個基於 **Nginx OpenResty** 的智能負載平衡和健康檢查系統，專為 **Uptime Kuma** 的多節點集群部署而設計。系統透過 Lua 腳本實現了應用層級的邏輯，具備自動故障檢測、故障轉移（Failover）、智能負載分配以及監控任務的重新平衡（Rebalancing）功能，確保監控服務的高可用性（HA）。
+
+- 部落格詳解（架構與實作心法）：https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/
+
+-----
+
+## 🚀 快速開始（Windows）
+
+- **前置需求**：已安裝 Docker Desktop；已安裝 Node.js 18+；PowerShell 5.1（預設）。
+- **啟動三節點叢集 + OpenResty 代理**：
+
+```powershell
+# 於專案根目錄執行
+& 'C:\Program Files\Docker\Docker\resources\bin\docker.EXE' compose -f 'docker-compose-cluster.yaml' up -d --build
+
+# 查看容器狀態
+& 'C:\Program Files\Docker\Docker\resources\bin\docker.EXE' ps
+
+# 檢查健康狀態 API（代理）
+Invoke-WebRequest -Uri 'http://localhost/api/system-status' | Select-Object -ExpandProperty Content
+```
+
+- **單機開發模式（僅後端 / 前端）**：
+  - 後端（Node）：`node start-server.js`
+  - 前端（Vite）：`npm run dev`
+
+如需更完整的部署與集群說明，請參考 `CLUSTER_DEPLOYMENT_GUIDE.md` 與 `nginx.conf`。
 
 -----
 
@@ -60,6 +42,19 @@
 | **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點。 |
 | **🛡️ 節點恢復管理** | 內建 **5分鐘** 的冷靜恢復機制，防止節點頻繁震盪（Flapping）影響系統穩定性。 |
 | **⚖️ 監控器再平衡** | 支援手動或自動觸發監控器重新分配，確保長期運行下的集群負載均衡。 |
+
+-----
+
+## 📦 目錄導覽
+
+- `docker-compose-cluster.yaml`：啟動多節點 Uptime Kuma + OpenResty 代理的 Compose 檔。
+- `nginx/`、`nginx.conf`：OpenResty/Nginx 主設定與站台設定。
+- `lua/`：負載平衡與健康檢查 Lua 腳本。
+- `server/`：Kuma 伺服端邏輯（認證、作業排程、通知等）。
+- `db/`：資料庫初始化與遷移腳本（Knex）。
+- `extra/`：輔助工具與腳本，例如版本更新、健康檢查、範例伺服器等。
+- `public/`、`src/`：前端資源與程式碼。
+- `API_DOCUMENTATION.md`：HTTP API 詳細說明與使用範例。
 
 -----
 
@@ -136,7 +131,7 @@ graph TD
 
 ## 🌐 API 接口
 
-系統提供了一系列 HTTP API 用於監控狀態與管理集群。
+openresty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 
 ### 🔍 狀態監控
 
@@ -262,6 +257,19 @@ curl http://localhost/api/system-status
 
 -----
 
+## 🧪 測試與工具
+
+- **K6 API 壓力測試**：
+  - 綜合測試：`k6-api-comprehensive-test.js`
+  - 併發建立監控器：`k6-create-100-monitors.js`
+  - 單路由壓測：`k6-monitor-test.js`
+  - 執行方式（PowerShell）：
+
+```powershell
+# 需要已安裝 k6；於專案根目錄
+k6 run .\k6-api-comprehensive-test.js
+```
+
 ## 📊 監控與維護
 
 為了確保生產環境的穩定性，建議關注以下指標：
@@ -277,20 +285,29 @@ curl http://localhost/api/system-status
 -----
 
 ## 🔒 安全考量
+-----
+
+## ❓ 常見問題（FAQ）
+
+- **API 返回 502 / 504**：
+  - 檢查 `nginx/logs/error.log` 是否有 Lua 或資料庫連線錯誤。
+  - 確認 `DB_*` 環境變數已在容器或系統層正確設置。
+- **節點反覆恢復/離線（Flapping）**：
+  - 調整健康檢查間隔或超時；檢查網路延遲與節點負載。
+- **監控器分佈不均**：
+  - 使用 `/api/trigger-rebalancing` 或 `/api/force-rebalance-all` 進行再平衡。
+
+-----
+
+## 📚 相關文件
+
+- `API_DOCUMENTATION.md`：完整 API 規範與示例。
+- `CLUSTER_DEPLOYMENT_GUIDE.md`：集群部署與操作指南。
+- `PUBLIC_STATUS_PAGINATION_PLAN.md`：公開狀態頁分頁計畫。
+- `SECURITY.md`、`CODE_OF_CONDUCT.md`、`CONTRIBUTING.md`：安全與貢獻規範。
+
+
 
   * **API 訪問控制**：目前的 API 接口未配置認證，建議在 Nginx 中透過 `allow/deny` 指令限制僅內網 IP 可訪問 `/api/` 路徑，或添加 Basic Auth。
   * **資料庫憑證**：避免將密碼硬編碼在 Lua 腳本中，始終使用 `os.getenv` 讀取環境變數。
 
------
-
-\<div align="center"\>
-\<sub\>Made with ❤️ for the Open Source Community\</sub\>
-<br>
-\<sub\>Version: 1.0.0 | Last Updated: 2024-12\</sub\>
-\</div\>
-
------
-
-### 💡 下一步
-
-您是否需要我針對其中的「配置說明」部分，提供更完整的 `nginx.conf` 範例代碼，或是詳細解釋 Lua 腳本中如何與 MariaDB 進行互動的？
