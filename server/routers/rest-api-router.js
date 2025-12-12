@@ -426,6 +426,44 @@ router.post("/api/v1/monitors", authenticateToken, [
                     msg: "Specified node not found"
                 });
             }
+
+            // 容量檢查
+            const monitorCount = await R.count("monitor", " node_id = ? AND active = 1 ", [ req.body.node_id ]);
+            if (monitorCount >= 1000) {
+                return res.status(400).json({
+                    ok: false,
+                    msg: `Node ${req.body.node_id} is at capacity (${monitorCount}/1000). Please select another node.`
+                });
+            }
+        } else {
+            // 自動選擇負載最小的節點
+            const nodeStats = await R.getAll(`
+                SELECT n.node_id, COUNT(m.id) as monitor_count 
+                FROM node n 
+                LEFT JOIN monitor m ON n.node_id = m.node_id AND m.active = 1
+                WHERE n.status = 'online'
+                GROUP BY n.node_id
+                ORDER BY monitor_count ASC
+                LIMIT 1
+            `);
+
+            if (nodeStats && nodeStats.length > 0) {
+                const bestNode = nodeStats[0];
+                if (bestNode.monitor_count >= 1000) {
+                     return res.status(400).json({
+                        ok: false,
+                        msg: "Cluster capacity reached! All online nodes have 1000+ monitors."
+                    });
+                }
+                req.body.node_id = bestNode.node_id;
+            } else {
+                // 如果無法查詢到節點狀態，預設分配給 node1（如果沒有指定任何節點）
+                // 這裡可以做一個簡單的 fallback
+                const fallbackNode = await R.findOne("node", " node_id = 'node1' ");
+                if (fallbackNode) {
+                    req.body.node_id = "node1";
+                }
+            }
         }
 
         const monitor = R.dispense("monitor");

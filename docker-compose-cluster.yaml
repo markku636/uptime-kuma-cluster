@@ -1,25 +1,6 @@
 version: '3.8'
 
-# 1. 節點通用配置 (Anchors)
-x-node-base: &node-base
-  build:
-    context: .
-    dockerfile: docker/dockerfile
-    target: release
-  restart: unless-stopped
-  networks:
-    - kuma-network
-  depends_on:
-    mariadb:
-      condition: service_healthy
-  healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 40s
-
-# 2. 共用環境變數配置
+# 1. 基礎配置與環境變數模板
 x-common-env: &common-env
   UPTIME_KUMA_DB_TYPE: mariadb
   UPTIME_KUMA_DB_HOSTNAME: mariadb
@@ -27,33 +8,32 @@ x-common-env: &common-env
   UPTIME_KUMA_DB_NAME: kuma
   UPTIME_KUMA_DB_USERNAME: kuma
   UPTIME_KUMA_DB_PASSWORD: kuma_pass
+  UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
 
-# 3. OpenResty 共用環境變數
 x-openresty-env: &openresty-env
   DB_HOST: mariadb
   DB_PORT: 3306
   DB_USER: kuma
   DB_PASSWORD: kuma_pass
   DB_NAME: kuma
-  EMMY_DEBUG_ENABLED: "true"
-  EMMY_DEBUG_HOST: 0.0.0.0
-  EMMY_DEBUG_PORT: 9966
-  HEALTH_CHECK_INTERVAL: 30
-  HEALTH_CHECK_TIMEOUT: 5
-  DEBUG_LOG_LEVEL: DEBUG
+  EMMY_DEBUG_ENABLED: "false"
 
-volumes:
-  kuma-db:
-    name: kuma-db
-
-networks:
-  kuma-network:
-    driver: bridge
+x-node-base: &node-base
+  image: louislam/uptime-kuma:latest
+  restart: unless-stopped
+  networks:
+    - kuma-network
+  healthcheck:
+    test: ["CMD-SHELL", "node extra/healthcheck.js"]
+    interval: 30s
+    timeout: 30s
+    retries: 3
+    start_period: 30s
 
 services:
   # --- 資料庫服務 ---
   mariadb:
-    image: mariadb:10.11
+    image: mariadb:10
     container_name: uptime-kuma-mariadb
     environment:
       MYSQL_ROOT_PASSWORD: kuma_root_pass
@@ -68,32 +48,29 @@ services:
     networks:
       - kuma-network
     healthcheck:
-      # 注意：這裡使用 $$ 轉義，以便在 shell 中正確讀取變數
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
 
-  # --- 負載平衡器 ---
+  # --- 負載平衡器 (OpenResty) ---
   openresty:
-    build:
-      context: .
-      dockerfile: docker/openresty.dockerfile
+    image: openresty/openresty:alpine
     container_name: uptime-kuma-openresty
     restart: unless-stopped
     ports:
-      # 修改：避免佔用本地 80/443，改為 8080/8443
-      - "8080:80"
-      - "8443:443"
+      - "80:80"
+      - "443:443"
       - "9966:9966"
     volumes:
-      # 確保這些本地路徑存在，否則啟動會失敗
       - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d:ro
       - ./nginx/ssl:/usr/local/openresty/nginx/conf/ssl:ro
       - ./nginx/logs:/usr/local/openresty/nginx/logs
       - ./nginx/logs/debug:/usr/local/openresty/nginx/logs/debug
+      - ./lua/health_check.lua:/usr/local/openresty/lualib/health_check.lua:ro
+      - ./lua/monitor_router.lua:/usr/local/openresty/lualib/monitor_router.lua:ro
     environment:
       <<: *openresty-env
     depends_on:
@@ -101,21 +78,10 @@ services:
         condition: service_healthy
       uptime-kuma-node1:
         condition: service_healthy
-      uptime-kuma-node2:
-        condition: service_healthy
-      uptime-kuma-node3:
-        condition: service_healthy
     networks:
       - kuma-network
-    # 若無 healthcheck 腳本，可暫時註解掉或確保腳本存在
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
-  # --- 應用節點 1 (主節點，負責遷移) ---
+  # --- 應用節點 1 (主節點) ---
   uptime-kuma-node1:
     <<: *node-base
     container_name: uptime-kuma-node1
@@ -130,6 +96,9 @@ services:
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node1:3001
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: 40000
+    depends_on:
+      mariadb:
+        condition: service_healthy
 
   # --- 應用節點 2 ---
   uptime-kuma-node2:
@@ -139,9 +108,6 @@ services:
       - ./data/node2:/app/data
     ports:
       - "9092:3001"
-    depends_on:
-      uptime-kuma-node1:
-        condition: service_healthy
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node2
@@ -149,6 +115,9 @@ services:
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node2:3001
       UPTIME_KUMA_SKIP_MIGRATE: "true"
       API_RATE_LIMIT: 40000
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
 
   # --- 應用節點 3 ---
   uptime-kuma-node3:
@@ -158,9 +127,6 @@ services:
       - ./data/node3:/app/data
     ports:
       - "9093:3001"
-    depends_on:
-      uptime-kuma-node1:
-        condition: service_healthy
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node3
@@ -168,3 +134,34 @@ services:
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node3:3001
       UPTIME_KUMA_SKIP_MIGRATE: "true"
       API_RATE_LIMIT: 40000
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
+
+  # --- 應用節點 4 (預備) ---
+  uptime-kuma-node4:
+    <<: *node-base
+    container_name: uptime-kuma-node4
+    volumes:
+      - ./data/node4:/app/data
+    ports:
+      - "9094:3001"
+    environment:
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: node4
+      UPTIME_KUMA_NODE_NAME: node4
+      UPTIME_KUMA_NODE_HOST: uptime-kuma-node4:3001
+      UPTIME_KUMA_SKIP_MIGRATE: "true"
+      API_RATE_LIMIT: 40000
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
+    profiles: ["extra"]  # 默認不啟動，需要時才啟動
+
+volumes:
+  kuma-db:
+    driver: local
+
+networks:
+  kuma-network:
+    driver: bridge
