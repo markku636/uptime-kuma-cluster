@@ -5,10 +5,8 @@ RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d \
     && mkdir -p /usr/local/openresty/nginx/conf/ssl \
     && mkdir -p /usr/local/openresty/nginx/logs/debug
 
-# 複製 Nginx 設定檔
-COPY nginx/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
-COPY nginx/conf.d/ /usr/local/openresty/nginx/conf/conf.d/
-COPY nginx/ssl/ /usr/local/openresty/nginx/conf/ssl/
+# 複製 Nginx 設定 (直接複製整個目錄以避免空目錄導致的 COPY 失敗)
+COPY nginx/ /usr/local/openresty/nginx/conf/
 
 # 複製 Lua 腳本
 COPY lua/health_check.lua /usr/local/openresty/lualib/health_check.lua
