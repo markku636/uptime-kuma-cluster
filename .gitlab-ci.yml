@@ -88,9 +88,9 @@ deploy:
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
-    - docker compose -f docker-compose-single-node.yaml down --remove-orphans
-    - docker compose -f docker-compose-single-node.yaml pull
-    - docker compose -f docker-compose-single-node.yaml up -d --force-recreate
+    - docker compose -f docker-compose-cluster.yaml down --remove-orphans
+    - docker compose -f docker-compose-cluster.yaml pull
+    - docker compose -f docker-compose-cluster.yaml up -d --force-recreate
   only:
     - main
   tags:
