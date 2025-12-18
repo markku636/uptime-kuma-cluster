@@ -40,8 +40,9 @@ services:
       MYSQL_DATABASE: kuma
       MYSQL_USER: kuma
       MYSQL_PASSWORD: kuma_pass
-      volumes:
-        - kuma-db:/var/lib/mysql
+    # --- 修正點：volumes 移出 environment 外，與 environment 同級 ---
+    volumes:
+      - kuma-db:/var/lib/mysql
     ports:
       - "9090:3306"
     restart: unless-stopped
@@ -61,22 +62,10 @@ services:
     restart: unless-stopped
     ports:
       - "8084:80"
-      # - "443:443"
-      # - "9966:9966"
-      # volumes:
-        # - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-        # - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d:ro
-        # - ./nginx/ssl:/usr/local/openresty/nginx/conf/ssl:ro
-        # - ./nginx/logs:/usr/local/openresty/nginx/logs
-        # - ./nginx/logs/debug:/usr/local/openresty/nginx/logs/debug
-        # - ./lua/health_check.lua:/usr/local/openresty/lualib/health_check.lua:ro
-        # - ./lua/monitor_router.lua:/usr/local/openresty/lualib/monitor_router.lua:ro
     environment:
       <<: *openresty-env
     depends_on:
       mariadb:
-      # volumes:
-        # - ./data/node1:/app/data
         condition: service_healthy
     networks:
       - kuma-network
@@ -85,17 +74,13 @@ services:
   uptime-kuma-node1:
     <<: *node-base
     container_name: uptime-kuma-node1
-    # volumes:
-    #   - ./data/node1:/app/data
     ports:
-      - "8087:3001"  # 修改點：9091 -> 8087
+      - "8087:3001"
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node1
       UPTIME_KUMA_NODE_NAME: node1
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node1:3001
-      # volumes:
-        # - ./data/node2:/app/data
     depends_on:
       mariadb:
         condition: service_healthy
@@ -104,17 +89,13 @@ services:
   uptime-kuma-node2:
     <<: *node-base
     container_name: uptime-kuma-node2
-    # volumes:
-    #   - ./data/node2:/app/data
     ports:
-      - "8088:3001"  # 修改點：9092 -> 8088
+      - "8088:3001"
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node2
       UPTIME_KUMA_NODE_NAME: node2
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node2:3001
-      # volumes:
-        # - ./data/node3:/app/data
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
@@ -123,17 +104,13 @@ services:
   uptime-kuma-node3:
     <<: *node-base
     container_name: uptime-kuma-node3
-    # volumes:
-    #   - ./data/node3:/app/data
     ports:
-      - "8089:3001"  # 修改點：9093 -> 8089
+      - "8089:3001"
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node3
       UPTIME_KUMA_NODE_NAME: node3
       UPTIME_KUMA_NODE_HOST: uptime-kuma-node3:3001
-      # volumes:
-        # - ./data/node4:/app/data
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
@@ -142,10 +119,8 @@ services:
   uptime-kuma-node4:
     <<: *node-base
     container_name: uptime-kuma-node4
-    # volumes:
-    #   - ./data/node4:/app/data
     ports:
-      - "8090:3001"  # 修改點：9094 -> 8090
+      - "8090:3001"
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node4
@@ -158,10 +133,10 @@ services:
         condition: service_healthy
     profiles: ["extra"]
 
+# --- 修正點：必須定義 kuma-db，否則 mariadb 啟動會失敗 ---
 volumes:
-## volumes:
-#  kuma-db:
-#    driver: local
+  kuma-db:
+    driver: local
 
 networks:
   kuma-network:
