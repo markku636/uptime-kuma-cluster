@@ -60,7 +60,7 @@ services:
     container_name: uptime-kuma-openresty
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8084:80"
       - "443:443"
       - "9966:9966"
     volumes:
@@ -88,7 +88,7 @@ services:
     volumes:
       - ./data/node1:/app/data
     ports:
-      - "9091:3001"
+      - "8087:3001"  # 修改點：9091 -> 8087
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node1
@@ -107,7 +107,7 @@ services:
     volumes:
       - ./data/node2:/app/data
     ports:
-      - "9092:3001"
+      - "8088:3001"  # 修改點：9092 -> 8088
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node2
@@ -126,7 +126,7 @@ services:
     volumes:
       - ./data/node3:/app/data
     ports:
-      - "9093:3001"
+      - "8089:3001"  # 修改點：9093 -> 8089
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node3
@@ -145,7 +145,7 @@ services:
     volumes:
       - ./data/node4:/app/data
     ports:
-      - "9094:3001"
+      - "8090:3001"  # 修改點：9094 -> 8090
     environment:
       <<: *common-env
       UPTIME_KUMA_NODE_ID: node4
@@ -156,7 +156,7 @@ services:
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
-    profiles: ["extra"]  # 默認不啟動，需要時才啟動
+    profiles: ["extra"]
 
 volumes:
   kuma-db:
