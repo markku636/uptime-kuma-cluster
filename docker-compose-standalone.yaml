@@ -1,0 +1,127 @@
+# Uptime Kuma Cluster - Standalone Build & Run Configuration
+# This version includes build contexts to allow building and running without external pre-built images.
+
+version: '3.8'
+
+# 1. 基礎配置與環境變數模板 (Common Environment Variables)
+x-common-env: &common-env
+  UPTIME_KUMA_DB_TYPE: "mariadb"
+  UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+  UPTIME_KUMA_DB_PORT: "3306"
+  UPTIME_KUMA_DB_NAME: "kuma"
+  UPTIME_KUMA_DB_USERNAME: "kuma"
+  UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+  UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+  UPTIME_KUMA_TRUST_PROXY: "true"
+
+x-openresty-env: &openresty-env
+  DB_HOST: "mariadb"
+  DB_PORT: "3306"
+  DB_USER: "kuma"
+  DB_PASSWORD: "kuma_pass"
+  DB_NAME: "kuma"
+  EMMY_DEBUG_ENABLED: "false"
+
+# Uptime Kuma 節點基礎配置 (Uptime Kuma Node Base Configuration)
+x-node-base: &node-base
+  build:
+    context: .
+    dockerfile: docker/dockerfile
+    target: release
+  image: uptime-kuma-cluster-node:latest
+  restart: unless-stopped
+  networks:
+    - kuma-network
+  healthcheck:
+    test: ["CMD-SHELL", "node extra/healthcheck.js"]
+    interval: 30s
+    timeout: 30s
+    retries: 3
+    start_period: 30s
+
+services:
+  # --- 資料庫服務 (Database Service) ---
+  mariadb:
+    image: mariadb:10
+    container_name: uptime-kuma-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: kuma_root_pass
+      MYSQL_DATABASE: kuma
+      MYSQL_USER: kuma
+      MYSQL_PASSWORD: kuma_pass
+    volumes:
+      - kuma-db:/var/lib/mysql
+    ports:
+      - "9090:3306"
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # --- 負載平衡器 (Load Balancer - OpenResty) ---
+  openresty:
+    build:
+      context: .
+      dockerfile: docker/openresty.dockerfile
+    image: uptime-kuma-openresty:latest
+    container_name: uptime-kuma-openresty
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    volumes:
+      - ./nginx-cluster.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./lua:/usr/local/openresty/nginx/lua:ro
+    environment:
+      <<: *openresty-env
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - kuma-network
+
+  # --- 應用節點 1 (Main Node) ---
+  uptime-kuma-node1:
+    <<: *node-base
+    container_name: uptime-kuma-node1
+    ports:
+      - "8087:3001"
+    volumes:
+      - ./data/node1:/app/data
+    environment:
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: "node1"
+      UPTIME_KUMA_NODE_NAME: "node1"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  # --- 應用節點 2 (Worker Node 2) ---
+  uptime-kuma-node2:
+    <<: *node-base
+    container_name: uptime-kuma-node2
+    ports:
+      - "8088:3001"
+    volumes:
+      - ./data/node2:/app/data
+    environment:
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: "node2"
+      UPTIME_KUMA_NODE_NAME: "node2"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
+
+volumes:
+  kuma-db:
+    driver: local
+
+networks:
+  kuma-network:
+    driver: bridge
