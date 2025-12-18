@@ -2,20 +2,20 @@ version: '3.8'
 
 # 1. 基礎配置與環境變數模板
 x-common-env: &common-env
-  UPTIME_KUMA_DB_TYPE: mariadb
-  UPTIME_KUMA_DB_HOSTNAME: mariadb
-  UPTIME_KUMA_DB_PORT: 3306
-  UPTIME_KUMA_DB_NAME: kuma
-  UPTIME_KUMA_DB_USERNAME: kuma
-  UPTIME_KUMA_DB_PASSWORD: kuma_pass
+  UPTIME_KUMA_DB_TYPE: "mariadb"
+  UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+  UPTIME_KUMA_DB_PORT: "3306"
+  UPTIME_KUMA_DB_NAME: "kuma"
+  UPTIME_KUMA_DB_USERNAME: "kuma"
+  UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
   UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
 
 x-openresty-env: &openresty-env
-  DB_HOST: mariadb
-  DB_PORT: 3306
-  DB_USER: kuma
-  DB_PASSWORD: kuma_pass
-  DB_NAME: kuma
+  DB_HOST: "mariadb"
+  DB_PORT: "3306"
+  DB_USER: "kuma"
+  DB_PASSWORD: "kuma_pass"
+  DB_NAME: "kuma"
   EMMY_DEBUG_ENABLED: "false"
 
 x-node-base: &node-base
@@ -40,7 +40,6 @@ services:
       MYSQL_DATABASE: kuma
       MYSQL_USER: kuma
       MYSQL_PASSWORD: kuma_pass
-    # --- 修正點：volumes 移出 environment 外，與 environment 同級 ---
     volumes:
       - kuma-db:/var/lib/mysql
     ports:
@@ -57,11 +56,15 @@ services:
 
   # --- 負載平衡器 (OpenResty) ---
   openresty:
-    image: openresty/openresty:alpine
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
     container_name: uptime-kuma-openresty
     restart: unless-stopped
     ports:
       - "8084:80"
+      - "443:443"
+      # - "9966:9966"
     environment:
       <<: *openresty-env
     depends_on:
@@ -78,9 +81,9 @@ services:
       - "8087:3001"
     environment:
       <<: *common-env
-      UPTIME_KUMA_NODE_ID: node1
-      UPTIME_KUMA_NODE_NAME: node1
-      UPTIME_KUMA_NODE_HOST: uptime-kuma-node1:3001
+      UPTIME_KUMA_NODE_ID: "node1"
+      UPTIME_KUMA_NODE_NAME: "node1"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -93,9 +96,9 @@ services:
       - "8088:3001"
     environment:
       <<: *common-env
-      UPTIME_KUMA_NODE_ID: node2
-      UPTIME_KUMA_NODE_NAME: node2
-      UPTIME_KUMA_NODE_HOST: uptime-kuma-node2:3001
+      UPTIME_KUMA_NODE_ID: "node2"
+      UPTIME_KUMA_NODE_NAME: "node2"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
@@ -108,9 +111,9 @@ services:
       - "8089:3001"
     environment:
       <<: *common-env
-      UPTIME_KUMA_NODE_ID: node3
-      UPTIME_KUMA_NODE_NAME: node3
-      UPTIME_KUMA_NODE_HOST: uptime-kuma-node3:3001
+      UPTIME_KUMA_NODE_ID: "node3"
+      UPTIME_KUMA_NODE_NAME: "node3"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
@@ -123,17 +126,16 @@ services:
       - "8090:3001"
     environment:
       <<: *common-env
-      UPTIME_KUMA_NODE_ID: node4
-      UPTIME_KUMA_NODE_NAME: node4
-      UPTIME_KUMA_NODE_HOST: uptime-kuma-node4:3001
+      UPTIME_KUMA_NODE_ID: "node4"
+      UPTIME_KUMA_NODE_NAME: "node4"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
       UPTIME_KUMA_SKIP_MIGRATE: "true"
-      API_RATE_LIMIT: 40000
+      API_RATE_LIMIT: "40000"
     depends_on:
       uptime-kuma-node1:
         condition: service_healthy
     profiles: ["extra"]
 
-# --- 修正點：必須定義 kuma-db，否則 mariadb 啟動會失敗 ---
 volumes:
   kuma-db:
     driver: local
