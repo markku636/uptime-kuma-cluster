@@ -106,6 +106,9 @@ deploy:
   image:
     name: docker:latest
     entrypoint: [""]
+  needs:
+    - build-uptimekuma
+    - build-openresty
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
