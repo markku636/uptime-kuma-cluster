@@ -2,8 +2,7 @@ FROM openresty/openresty:alpine-fat
 
 # 安裝必要的 Lua 模組
 RUN opm install ledgetech/lua-resty-http \
-    && opm install openresty/lua-resty-mysql \
-    && opm install openresty/lua-cjson
+    && opm install openresty/lua-resty-mysql
 
 # 建立必要的目錄
 RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d \
