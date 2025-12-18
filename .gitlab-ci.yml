@@ -113,22 +113,23 @@ cleanup_old_images:
     entrypoint: [ "" ]
   script:
     - >
-      REPO="$AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME";
       KEEP=$KEEP_VERSIONS;
-      echo "開始清理 ${REPO} 舊版映像檔，只保留最新 ${KEEP} 個版本";
-      TOTAL=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | wc -l);
-      echo "總共找到 ${TOTAL} 個版本";
-      REMOVE_COUNT=$((TOTAL - KEEP));
-      if [ "$REMOVE_COUNT" -gt 0 ]; then
-        echo "需要刪除 ${REMOVE_COUNT} 個舊版本";
-        IMAGES=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | sort -k2 -n | head -n ${REMOVE_COUNT} | awk '{print $3}');
-        for image in $IMAGES; do
-          echo "刪除映像檔：$image";
-          docker rmi --force $image || true;
-        done;
-      else
-        echo "沒有需要刪除的舊版本映像檔";
-      fi
+      for REPO in "$AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME" "$AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME-openresty"; do
+        echo "開始清理 ${REPO} 舊版映像檔，只保留最新 ${KEEP} 個版本";
+        TOTAL=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | wc -l);
+        echo "總共找到 ${TOTAL} 個版本";
+        REMOVE_COUNT=$((TOTAL - KEEP));
+        if [ "$REMOVE_COUNT" -gt 0 ]; then
+          echo "需要刪除 ${REMOVE_COUNT} 個舊版本";
+          IMAGES=$(docker images --format "{{.Repository}} {{.Tag}} {{.ID}}" | grep "${REPO}" | sort -k2 -n | head -n ${REMOVE_COUNT} | awk '{print $3}');
+          for image in $IMAGES; do
+            echo "刪除映像檔：$image";
+            docker rmi --force $image || true;
+          done;
+        else
+          echo "沒有需要刪除的舊版本映像檔";
+        fi
+      done
   tags:
     - Development.IISI_Banqiao.docker
   variables:
