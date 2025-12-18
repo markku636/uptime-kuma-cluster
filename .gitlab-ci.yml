@@ -60,7 +60,7 @@ variables:
 #   variables:
 #     REMOTE_DIRS: "/data/volume/uptimekuma"
 
-build:
+build-uptimekuma:
   stage: build
   image:
     name: docker:latest
@@ -68,15 +68,27 @@ build:
   before_script:
     - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
   script:
-    - echo "=== 建置包含前端的 Docker 映像檔 ==="
+    - echo "=== 建置 Uptime Kuma 映像檔 ==="
     - docker build
       --target release
       -f docker/dockerfile
       -t ${UPTIME_KUMA_IMAGE}
       .
-    - echo "Docker image built successfully"
+    - echo "Uptime Kuma image built successfully"
     - docker push ${UPTIME_KUMA_IMAGE}
-    
+  only:
+    - main
+  tags:
+    - Development.IISI_Banqiao.docker
+
+build-openresty:
+  stage: build
+  image:
+    name: docker:latest
+    entrypoint: [""]
+  before_script:
+    - echo ${AZURE_CONTAINER_REGISTRY_KEY} | docker login ${AZURE_CONTAINER_REGISTRY_URL} -u ${AZURE_CONTAINER_REGISTRY_USER} --password-stdin
+  script:
     - echo "=== 建置 OpenResty 映像檔 ==="
     - docker build
       -f nginx/Dockerfile
