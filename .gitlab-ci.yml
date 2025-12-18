@@ -5,7 +5,8 @@ stages:
   - cleanup
 
 variables:
-  IMAGE: $AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME:${CI_PIPELINE_ID}
+  UPTIME_KUMA_IMAGE: $AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME:${CI_PIPELINE_ID}
+  OPENRESTY_IMAGE: $AZURE_CONTAINER_REGISTRY_URL$CI_REGISTRY_IMAGE/$CI_BUILD_REF_NAME-openresty:${CI_PIPELINE_ID}
 
 # check_network:
 #   stage: check
@@ -71,10 +72,18 @@ build:
     - docker build
       --target release
       -f docker/dockerfile
-      -t ${IMAGE}
+      -t ${UPTIME_KUMA_IMAGE}
       .
     - echo "Docker image built successfully"
-    - docker push ${IMAGE}
+    - docker push ${UPTIME_KUMA_IMAGE}
+    
+    - echo "=== 建置 OpenResty 映像檔 ==="
+    - docker build
+      -f nginx/Dockerfile
+      -t ${OPENRESTY_IMAGE}
+      .
+    - echo "OpenResty image built successfully"
+    - docker push ${OPENRESTY_IMAGE}
   only:
     - main
   tags:
