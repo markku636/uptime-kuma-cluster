@@ -285,4 +285,78 @@ function _M.pick_node_for_request()
     return host, port
 end
 
+-- DNS 解析函數（在 access 階段使用）
+-- balancer_by_lua* 階段需要 IP 地址，不能使用 hostname
+local function resolve_host(hostname)
+    local resolver = require "resty.dns.resolver"
+    local r, err = resolver:new{
+        nameservers = {"127.0.0.11"},  -- Docker 內建 DNS
+        retrans = 3,
+        timeout = 2000,
+    }
+    
+    if not r then
+        ngx.log(ngx.ERR, "failed to create resolver: ", err)
+        return nil, err
+    end
+    
+    local answers, err = r:query(hostname, { qtype = r.TYPE_A })
+    if not answers then
+        ngx.log(ngx.ERR, "failed to query DNS for ", hostname, ": ", err)
+        return nil, err
+    end
+    
+    if answers.errcode then
+        ngx.log(ngx.ERR, "DNS error for ", hostname, ": ", answers.errstr)
+        return nil, answers.errstr
+    end
+    
+    for _, ans in ipairs(answers) do
+        if ans.type == r.TYPE_A then
+            ngx.log(ngx.DEBUG, "resolved ", hostname, " to ", ans.address)
+            return ans.address
+        end
+    end
+    
+    return nil, "no A record found"
+end
+
+-- 預選節點（用於 access_by_lua* 階段，將結果存入 ngx.ctx）
+-- 這個函數必須在 access 階段調用，因為 balancer 階段不能使用 socket API
+function _M.preselect_node()
+    local host, port = _M.pick_node_for_request()
+    
+    -- 解析 hostname 為 IP 地址（balancer 階段需要）
+    local ip, err = resolve_host(host)
+    if not ip then
+        ngx.log(ngx.WARN, "preselect_node: failed to resolve ", host, ", using fallback: ", err)
+        -- fallback: 嘗試解析 node1
+        ip, err = resolve_host("uptime-kuma-node1")
+        if not ip then
+            ngx.log(ngx.ERR, "preselect_node: failed to resolve fallback node1: ", err)
+            -- 最後手段：使用硬編碼的容器 IP（不推薦）
+            ip = nil
+        end
+    end
+    
+    ngx.ctx.upstream_host = ip
+    ngx.ctx.upstream_port = port
+    ngx.ctx.upstream_hostname = host  -- 保留原始 hostname 用於日誌
+    ngx.log(ngx.INFO, "preselect_node: selected ", host, " (IP: ", tostring(ip), "):", port)
+end
+
+-- 獲取預選的節點（用於 balancer_by_lua* 階段）
+-- 如果沒有預選，則使用默認節點
+function _M.get_preselected_node()
+    local host = ngx.ctx.upstream_host
+    local port = ngx.ctx.upstream_port
+    
+    if not host then
+        ngx.log(ngx.WARN, "get_preselected_node: no preselected node IP available")
+        return nil, nil
+    end
+    
+    return host, port
+end
+
 return _M

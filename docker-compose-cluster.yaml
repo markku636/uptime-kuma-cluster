@@ -55,6 +55,14 @@ services:
         condition: service_healthy
       uptime-kuma-node1:
         condition: service_started
+      uptime-kuma-node2:
+        condition: service_started
+      uptime-kuma-node3:
+        condition: service_started
+      uptime-kuma-node4:
+        condition: service_started
+      uptime-kuma-node5:
+        condition: service_started
     networks:
       - kuma-network
 
@@ -83,6 +91,122 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+    networks:
+      - kuma-network
+
+  uptime-kuma-node2:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:latest}
+    container_name: uptime-kuma-node2
+    restart: unless-stopped
+    volumes:
+      - ./data/node2:/app/data
+    ports:
+      - "3002:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node2"
+      UPTIME_KUMA_NODE_NAME: "node2"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_started
+    networks:
+      - kuma-network
+
+  uptime-kuma-node3:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:latest}
+    container_name: uptime-kuma-node3
+    restart: unless-stopped
+    volumes:
+      - ./data/node3:/app/data
+    ports:
+      - "3003:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node3"
+      UPTIME_KUMA_NODE_NAME: "node3"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node2:
+        condition: service_started
+    networks:
+      - kuma-network
+
+  uptime-kuma-node4:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:latest}
+    container_name: uptime-kuma-node4
+    restart: unless-stopped
+    volumes:
+      - ./data/node4:/app/data
+    ports:
+      - "3004:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node4"
+      UPTIME_KUMA_NODE_NAME: "node4"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node3:
+        condition: service_started
+    networks:
+      - kuma-network
+
+  uptime-kuma-node5:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:latest}
+    container_name: uptime-kuma-node5
+    restart: unless-stopped
+    volumes:
+      - ./data/node5:/app/data
+    ports:
+      - "3005:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node5"
+      UPTIME_KUMA_NODE_NAME: "node5"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node5:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node4:
+        condition: service_started
     networks:
       - kuma-network
 

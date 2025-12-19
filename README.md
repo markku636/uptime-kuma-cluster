@@ -1,4 +1,3 @@
-
 -----
 
 ## 🎯 系統概述
@@ -37,11 +36,12 @@ Invoke-WebRequest -Uri 'http://localhost/api/system-status' | Select-Object -Exp
 
 | 特性 | 描述 |
 | :--- | :--- |
-| **⚖️ 智能負載平衡（動態 Lua balancer）** | 透過 OpenResty `balancer_by_lua_block`，在每次請求時由 `monitor_router.pick_node_for_request()` 即時計算並選擇後端節點，無需在 `nginx.conf` 中寫死節點列表。 |
+| **⚖️ 兩階段智能負載平衡** | 採用 access + balancer 兩階段架構：在 `access_by_lua` 階段完成 DB 查詢與 DNS 解析，在 `balancer_by_lua` 階段設置上游節點，完美解決 OpenResty API 限制問題。 |
 | **💓 主動健康檢查** | 系統每 **30 秒**（可配置）對節點進行主動健康檢查，結果寫入資料庫 `node` 表，提供路由決策依據。 |
 | **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點，並更新 DB 狀態。 |
 | **🛡️ 節點恢復管理** | 節點恢復健康後，會自動還原先前轉移走的監控任務，避免長期失衡。 |
 | **📊 節點容量查詢** | 透過 `/lb/capacity` API 直接從 DB 查詢每個節點當前的監控數量與使用率，方便觀察負載。 |
+| **🌐 Docker DNS 整合** | 使用 Docker 內建 DNS (127.0.0.11) 解析服務名為 IP，支援容器動態 IP 環境。 |
 
 -----
 
@@ -87,14 +87,64 @@ graph TD
     Node3 --> DB
 ```
 
-### 負載平衡決策流程（動態 Lua balancer 版）
+### 負載平衡決策流程（兩階段 Lua 路由架構）
 
-1.  **請求到達**：Nginx `location` 收到請求，統一 `proxy_pass` 到 `upstream uptime_kuma_cluster`。
-2.  **Lua 介入**：`balancer_by_lua_block` 透過 `require "monitor_router"` 呼叫 `pick_node_for_request()`。
-3.  **查詢節點狀態與負載**：`pick_node_for_request()` 查詢資料庫 `node` 與 `monitor` 表，統計每個 `status = 'online'` 節點目前 `active = 1` 的監控數量。
-4.  **選擇節點**：選擇「監控數量最少」的 online 節點（若相同則依 `node_id` 穩定排序），映射為 Docker 服務名 `uptime-kuma-nodeX`。
-5.  **設置目標節點**：Lua 透過 `ngx.balancer.set_current_peer(host, port)` 設置實際上游節點。
-6.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點並完成回應。
+由於 OpenResty 的 `balancer_by_lua*` 階段有 API 限制（無法使用 `ngx.socket.tcp()` 等 cosocket API），系統採用**兩階段架構**來實現動態路由：
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Nginx
+    participant Access[access_by_lua]
+    participant Balancer[balancer_by_lua]
+    participant DNS[Docker DNS]
+    participant DB[(MariaDB)]
+    participant Node[Uptime Kuma Node]
+
+    Client->>Nginx: HTTP Request
+    Nginx->>Access: 進入 access 階段
+    Access->>DB: 查詢 node 表取得 online 節點
+    DB-->>Access: 返回節點列表與負載
+    Access->>Access: 選擇最空閒節點 (uptime-kuma-nodeX)
+    Access->>DNS: 解析 hostname 為 IP
+    DNS-->>Access: 返回 IP 地址
+    Access->>Access: 存儲 IP:Port 到 ngx.ctx
+    Access-->>Nginx: 完成預選
+    Nginx->>Balancer: 進入 balancer 階段
+    Balancer->>Balancer: 從 ngx.ctx 讀取預選的 IP:Port
+    Balancer->>Node: set_current_peer(IP, Port)
+    Node-->>Client: HTTP Response
+```
+
+#### 階段說明
+
+| 階段 | Nginx Directive | 可用 API | 職責 |
+|:---|:---|:---|:---|
+| **Access 階段** | `access_by_lua_block` | ✅ Socket、MySQL、DNS 解析 | 查詢 DB 選擇節點、解析 DNS 為 IP、存入 `ngx.ctx` |
+| **Balancer 階段** | `balancer_by_lua_block` | ❌ 僅限 `ngx.balancer` API | 從 `ngx.ctx` 讀取預選結果、呼叫 `set_current_peer()` |
+
+#### 詳細流程
+
+1.  **請求到達**：Nginx `location` 收到請求。
+2.  **Access 階段 - 預選節點**：`access_by_lua_block` 呼叫 `router.preselect_node()`：
+    - 透過 `pick_node_for_request()` 查詢資料庫 `node` 與 `monitor` 表
+    - 統計每個 `status = 'online'` 節點目前 `active = 1` 的監控數量
+    - 選擇「監控數量最少」的 online 節點，映射為 Docker 服務名 `uptime-kuma-nodeX`
+    - 使用 `resty.dns.resolver` 將 hostname 解析為 IP 地址
+    - 將 IP 和 Port 存入 `ngx.ctx.upstream_host` 和 `ngx.ctx.upstream_port`
+3.  **Balancer 階段 - 設置目標**：`balancer_by_lua_block` 呼叫 `router.get_preselected_node()`：
+    - 從 `ngx.ctx` 讀取預選的 IP 和 Port
+    - 透過 `ngx.balancer.set_current_peer(ip, port)` 設置實際上游節點
+4.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點並完成回應。
+
+#### 為什麼需要兩階段？
+
+OpenResty 的 `balancer_by_lua*` 階段運行在 Nginx 的連接建立過程中，此時以下 API 被禁用：
+- `ngx.socket.tcp()` - 無法建立 TCP 連接（包括 MySQL 連接）
+- `ngx.socket.udp()` - 無法進行 UDP 通信
+- DNS 解析（依賴 socket）
+
+因此，所有需要網路 I/O 的操作（資料庫查詢、DNS 解析）必須在 `access_by_lua*` 階段完成，並將結果透過 `ngx.ctx`（請求級別的上下文）傳遞給 `balancer_by_lua*` 階段使用。
 
 -----
 
@@ -107,31 +157,53 @@ graph TD
 OpenResty 內建一個全域物件 `ngx`，提供：
 
 - **請求/回應控制**：`ngx.var`（讀寫 Nginx 變數）、`ngx.req`（讀取請求）、`ngx.say` / `ngx.print`（輸出內容）、`ngx.status` / `ngx.header`（設定狀態碼與標頭）、`ngx.exit()`（結束請求並回傳特定 HTTP 狀態碼）。
+- **請求級別上下文**：`ngx.ctx` 是一個 Lua table，用於在同一請求的不同處理階段之間傳遞資料。本專案用它在 access 階段存儲預選的節點 IP，供 balancer 階段使用。
 - **路由與上游選擇**：
-  - 在 `balancer_by_lua_block` 中使用 `local balancer = require "ngx.balancer"`，再呼叫 `balancer.set_current_peer(host, port)` 來**動態指定此請求要打到哪一個後端節點**（等同於程式化的 `proxy_pass` 目標）。
+  - 在 `access_by_lua_block` 中進行 DB 查詢、DNS 解析等需要 socket 的操作，並將結果存入 `ngx.ctx`。
+  - 在 `balancer_by_lua_block` 中使用 `local balancer = require "ngx.balancer"`，再呼叫 `balancer.set_current_peer(ip, port)` 來**動態指定此請求要打到哪一個後端節點**。注意：此階段只能使用 IP 地址，不能使用 hostname。
   - 在 `content_by_lua_block` 中直接產生回應（例如 `/lb/health`、`/lb/capacity`），不用再透過 upstream。
 - **計時、排程與共享狀態**：`ngx.now()`（當前時間）、`ngx.timer.at()`（排程背景任務）、`ngx.shared.DICT`（跨請求共享記憶體）。
 
-本專案中，**請求實際導向哪一個 `uptime-kuma-nodeX`，完全由 `balancer_by_lua_block` + `monitor_router.pick_node_for_request()` 透過 `ngx.balancer.set_current_peer()` 動態決定**，而不是在 `nginx.conf` 的 upstream 裡寫死 `server` 清單。
+> ⚠️ **重要限制**：`balancer_by_lua*` 階段無法使用 `ngx.socket.tcp()` 等 cosocket API，因此無法在此階段進行資料庫查詢或 DNS 解析。這就是為什麼本專案採用兩階段架構的原因。
+
+本專案中，**請求實際導向哪一個 `uptime-kuma-nodeX`，由兩階段協作完成**：
+1. **Access 階段**：`access_by_lua_block` + `monitor_router.preselect_node()` 查詢 DB、解析 DNS、存入 `ngx.ctx`
+2. **Balancer 階段**：`balancer_by_lua_block` + `monitor_router.get_preselected_node()` 讀取 `ngx.ctx`、呼叫 `ngx.balancer.set_current_peer()`
 
 ### 1\. 路由與負載平衡模組 (`monitor_router.lua`)
 
-負責處理請求分發邏輯與節點資訊查詢。
+負責選擇要把請求轉發到哪個 Uptime Kuma 節點。
 
-  * **核心職責**：
-      * **動態節點選擇**：`pick_node_for_request()` 在每次請求時，根據 DB 中每個節點當前的監控數量（`monitor.active = 1`）選擇「最空閒」且 `status = 'online'` 的節點，再決定要連到哪一個 `uptime-kuma-nodeX`。
-      * **監控路由輔助**：`route_by_monitor_id()` / `route_new_monitor()` 等函式提供基於 DB 的監控分配邏輯（供應用層或之後擴充使用）。
-      * **集群資訊查詢**：`get_cluster_status()`、`get_node_capacity()` 直接從 DB 彙總節點狀態與容量，並透過 `/lb/health`、`/lb/capacity` 暴露給前端或外部系統。
-  * **關鍵函數**：
-      * `pick_node_for_request()`：提供給 `balancer_by_lua_block` 使用，回傳 `(host, port)` 作為當前請求的實際 upstream，內部會：
-        * 透過 `db_connect()` 建立到 MariaDB 的連線。
-        * 使用 `node LEFT JOIN monitor` 查出每個 `status = 'online'` 節點目前 `active = 1` 的監控數量。
-        * 依 `monitor_count ASC, node_id ASC` 排序選出最空閒節點，並組合出 `uptime-kuma-nodeX:3001`。
-      * `route_by_monitor_id(monitor_id)`：依據 `monitor.id` 查詢其 `assigned_node` / `node_id`，用於「某個監控固定在某節點」的場景，並將結果快取到 `ngx.shared.monitor_routing`。
-      * `route_new_monitor()` / `find_available_node(db)`：依據各節點已存在的監控數量挑選最空閒節點，作為新監控的預設節點（目前主要給後端或後續擴充使用）。
-      * `hash_route(monitor_id)` / `route_by_user(user_id)`：提供簡單的 hash-based 路由（當資料庫不可用或需要依使用者做親和性時的降級方案）。
-      * `get_cluster_status()`：查詢 `node` 表，回傳每個節點的 `status`、`last_seen` 與監控數量，對應 `/lb/health`。
-      * `get_node_capacity()`：查詢每個節點當前的監控數量與使用百分比，對應 `/lb/capacity`。
+#### 為什麼要「兩階段」？
+
+因為 OpenResty 的 `balancer_by_lua` 階段**禁止使用網路連線**，所以：
+
+```
+┌─────────────────┐      ┌──────────────────┐
+│  Access 階段    │ ──▶  │  Balancer 階段   │
+│  (可以查 DB)    │      │  (只能設目標)    │
+├─────────────────┤      ├──────────────────┤
+│ 1. 查 DB 選節點 │      │ 讀取 ngx.ctx     │
+│ 2. DNS 解析成 IP│      │ 設定 IP:Port     │
+│ 3. 存到 ngx.ctx │      │                  │
+└─────────────────┘      └──────────────────┘
+```
+
+#### 主要函數
+
+| 函數 | 用途 |
+|:---|:---|
+| `preselect_node()` | 【Access 階段】查 DB 選節點 → 解析 DNS → 存入 `ngx.ctx` |
+| `get_preselected_node()` | 【Balancer 階段】從 `ngx.ctx` 讀取 IP:Port |
+| `pick_node_for_request()` | 查詢最空閒的 online 節點 |
+| `resolve_host()` | 將 Docker 服務名解析為 IP |
+
+#### 其他輔助函數
+
+- `route_by_monitor_id()` - 根據監控 ID 查固定節點
+- `get_cluster_status()` - 取得集群狀態（供 `/lb/health`）
+- `get_node_capacity()` - 取得節點容量（供 `/lb/capacity`）
+- `hash_route()` - DB 掛掉時的備援路由
 
 ### 2\. 健康檢查模組 (`health_check.lua`)
 
