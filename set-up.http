@@ -115,3 +115,28 @@ Content-Type: application/json
 GET {{baseUrl}}/api/v1/monitors/1/heartbeats?period=24
 Authorization: {{apiKey}}
 
+### ---------------
+### OpenResty / 負載平衡 / 健康檢查相關測試
+### ---------------
+
+### 檢查 Nginx / OpenResty 本身健康狀態
+GET {{baseUrl}}/health
+
+### 查詢 OpenResty 健康檢查統計資訊
+GET {{baseUrl}}/api/health-status
+
+### 手動觸發一次健康檢查
+POST {{baseUrl}}/api/trigger-health-check
+
+### 查詢集群節點狀態 (來自 DB node 表)
+GET {{baseUrl}}/lb/health
+
+### 查詢節點容量 / monitor 數量
+GET {{baseUrl}}/lb/capacity
+
+### 取得目前健康檢查調試設定
+GET {{baseUrl}}/api/debug-config
+
+### 取得 OpenResty 調試日誌（僅限內網/測試環境使用，避免生產環境暴露過多資訊）
+GET {{baseUrl}}/api/debug-logs
+

@@ -258,8 +258,14 @@ curl http://localhost/api/system-status
 
 -----
 
+
 ## 🧪 測試與工具
 
+- **OpenResty / API 功能測試（HTTP 檔案）**：
+  - `set-up.http`：
+    - 基本 Kuma API 測試（狀態、Monitors CRUD、狀態頁等）。
+    - OpenResty 健康檢查與負載平衡相關端點測試：`/health`、`/api/health-status`、`/api/trigger-health-check`、`/lb/health`、`/lb/capacity`、`/api/debug-config`、`/api/debug-logs`。
+    - 建議使用 VS Code REST Client / IntelliJ HTTP Client / Thunder Client 等工具直接開啟並執行。
 - **K6 API 壓力測試**：
   - 綜合測試：`k6-api-comprehensive-test.js`
   - 併發建立監控器：`k6-create-100-monitors.js`
