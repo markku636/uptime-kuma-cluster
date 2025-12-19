@@ -91,8 +91,8 @@ graph TD
 
 1.  **請求到達**：Nginx `location` 收到請求，統一 `proxy_pass` 到 `upstream uptime_kuma_cluster`。
 2.  **Lua 介入**：`balancer_by_lua_block` 透過 `require "monitor_router"` 呼叫 `pick_node_for_request()`。
-3.  **查詢節點狀態**：`pick_node_for_request()` 直接查詢資料庫 `node` 表，取得 `status = 'online'` 的節點列表。
-4.  **選擇節點**：根據目前在線節點數做簡單輪詢（可擴充為依容量、權重等進階演算法），選出一個 `node_id`，並映射為 Docker 服務名 `uptime-kuma-nodeX`。
+3.  **查詢節點狀態與負載**：`pick_node_for_request()` 查詢資料庫 `node` 與 `monitor` 表，統計每個 `status = 'online'` 節點目前 `active = 1` 的監控數量。
+4.  **選擇節點**：選擇「監控數量最少」的 online 節點（若相同則依 `node_id` 穩定排序），映射為 Docker 服務名 `uptime-kuma-nodeX`。
 5.  **設置目標節點**：Lua 透過 `ngx.balancer.set_current_peer(host, port)` 設置實際上游節點。
 6.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點並完成回應。
 
@@ -102,18 +102,36 @@ graph TD
 
 系統核心邏輯由兩個主要的 Lua 模組構成：
 
+### 0\. `ngx` 是什麼？如何在 OpenResty 裡導頁 / 轉發請求
+
+OpenResty 內建一個全域物件 `ngx`，提供：
+
+- **請求/回應控制**：`ngx.var`（讀寫 Nginx 變數）、`ngx.req`（讀取請求）、`ngx.say` / `ngx.print`（輸出內容）、`ngx.status` / `ngx.header`（設定狀態碼與標頭）、`ngx.exit()`（結束請求並回傳特定 HTTP 狀態碼）。
+- **路由與上游選擇**：
+  - 在 `balancer_by_lua_block` 中使用 `local balancer = require "ngx.balancer"`，再呼叫 `balancer.set_current_peer(host, port)` 來**動態指定此請求要打到哪一個後端節點**（等同於程式化的 `proxy_pass` 目標）。
+  - 在 `content_by_lua_block` 中直接產生回應（例如 `/lb/health`、`/lb/capacity`），不用再透過 upstream。
+- **計時、排程與共享狀態**：`ngx.now()`（當前時間）、`ngx.timer.at()`（排程背景任務）、`ngx.shared.DICT`（跨請求共享記憶體）。
+
+本專案中，**請求實際導向哪一個 `uptime-kuma-nodeX`，完全由 `balancer_by_lua_block` + `monitor_router.pick_node_for_request()` 透過 `ngx.balancer.set_current_peer()` 動態決定**，而不是在 `nginx.conf` 的 upstream 裡寫死 `server` 清單。
+
 ### 1\. 路由與負載平衡模組 (`monitor_router.lua`)
 
 負責處理請求分發邏輯與節點資訊查詢。
 
   * **核心職責**：
-      * **動態節點選擇**：`pick_node_for_request()` 在每次請求時，根據 `node` 表當前的線上節點決定要連到哪一個 `uptime-kuma-nodeX`。
+      * **動態節點選擇**：`pick_node_for_request()` 在每次請求時，根據 DB 中每個節點當前的監控數量（`monitor.active = 1`）選擇「最空閒」且 `status = 'online'` 的節點，再決定要連到哪一個 `uptime-kuma-nodeX`。
       * **監控路由輔助**：`route_by_monitor_id()` / `route_new_monitor()` 等函式提供基於 DB 的監控分配邏輯（供應用層或之後擴充使用）。
       * **集群資訊查詢**：`get_cluster_status()`、`get_node_capacity()` 直接從 DB 彙總節點狀態與容量，並透過 `/lb/health`、`/lb/capacity` 暴露給前端或外部系統。
   * **關鍵函數**：
-      * `pick_node_for_request()`: 提供給 `balancer_by_lua_block` 使用，回傳 `(host, port)` 作為當前請求的實際 upstream。
-      * `get_cluster_status()`: 查詢所有節點的狀態與監控數量。
-      * `get_node_capacity()`: 查詢每個節點的 monitor 數量與使用百分比。
+      * `pick_node_for_request()`：提供給 `balancer_by_lua_block` 使用，回傳 `(host, port)` 作為當前請求的實際 upstream，內部會：
+        * 透過 `db_connect()` 建立到 MariaDB 的連線。
+        * 使用 `node LEFT JOIN monitor` 查出每個 `status = 'online'` 節點目前 `active = 1` 的監控數量。
+        * 依 `monitor_count ASC, node_id ASC` 排序選出最空閒節點，並組合出 `uptime-kuma-nodeX:3001`。
+      * `route_by_monitor_id(monitor_id)`：依據 `monitor.id` 查詢其 `assigned_node` / `node_id`，用於「某個監控固定在某節點」的場景，並將結果快取到 `ngx.shared.monitor_routing`。
+      * `route_new_monitor()` / `find_available_node(db)`：依據各節點已存在的監控數量挑選最空閒節點，作為新監控的預設節點（目前主要給後端或後續擴充使用）。
+      * `hash_route(monitor_id)` / `route_by_user(user_id)`：提供簡單的 hash-based 路由（當資料庫不可用或需要依使用者做親和性時的降級方案）。
+      * `get_cluster_status()`：查詢 `node` 表，回傳每個節點的 `status`、`last_seen` 與監控數量，對應 `/lb/health`。
+      * `get_node_capacity()`：查詢每個節點當前的監控數量與使用百分比，對應 `/lb/capacity`。
 
 ### 2\. 健康檢查模組 (`health_check.lua`)
 
@@ -124,9 +142,18 @@ graph TD
       * **故障檢測與轉移**：當節點連續多次檢查失敗時，標記為 `offline`，並呼叫 `redistribute_monitors_from_node()` 進行監控任務重新分配。
       * **節點恢復**：節點恢復健康後，透過 `revert_monitors_to_node()` 將先前轉移的監控任務還原。
   * **關鍵函數**：
-      * `run_health_check()`: 單次健康檢查流程，更新 DB 與 shared dict。
-      * `health_check_worker()`: 以定時 loop 方式週期性執行健康檢查。
-      * `get_statistics()`: 提供 `/api/health-status` 使用的統計資訊。
+      * `run_health_check()`：單次健康檢查流程，會：
+        * 使用 `_M.get_all_nodes()` 查出所有節點與其 `host`、`status`。
+        * 對每個節點呼叫 `_M.check_node_health(host)`（透過 `resty.http` 發 HTTP 請求到各節點的 `/api/v1/health`）。
+        * 依結果更新 DB `node.status`（`online` / `offline`）、更新 `ngx.shared.health_checker` 裡的統計值與連續成功/失敗次數。
+        * 當某節點連續失敗達門檻時，呼叫 `redistribute_monitors_from_node(node_id)` 將該節點上的監控平均分配到其他線上節點。
+        * 當某節點連續成功達門檻時，呼叫 `revert_monitors_to_node(node_id)` 將先前轉移走的監控還原。
+      * `health_check_worker()`：在 `init_worker_by_lua_block` 中以無限迴圈方式週期性呼叫 `run_health_check()`，並使用 `ngx.sleep(interval)` 控制間隔。
+      * `get_statistics()`：從 `ngx.shared.health_checker` 中讀出 `check_count`、`last_check`、`success_count`、`fail_count` 等統計資訊，並透過 `/api/health-status` 暴露給外部。
+      * 其他輔助函式：
+        * `get_all_nodes()`：查詢 `node` 表取得所有節點的 `node_id`、`host`、`status`。
+        * `update_node_status(node_id, status, is_online)`：將節點狀態寫回 DB，並更新 `last_seen` 等欄位。
+        * `start_debugger()` / `get_debug_config()`：根據環境變數啟用 Emmy Lua Debugger，並提供 `/api/debug-config` 等除錯資訊。
 
 -----
 

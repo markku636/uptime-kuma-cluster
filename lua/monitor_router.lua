@@ -234,6 +234,7 @@ function _M.get_node_capacity()
 end
 
 -- 動態為當前請求選擇節點（提供給 balancer_by_lua_block 使用）
+-- 邏輯：依據各節點目前的 monitor 數量（active=1），優先選擇「監控數量最少」且 online 的節點
 -- 回傳值：host, port
 function _M.pick_node_for_request()
     local db, err = db_connect()
@@ -242,37 +243,45 @@ function _M.pick_node_for_request()
         return "uptime-kuma-node1", 3001
     end
 
-    -- 依節點狀態從 node table 取得可用節點
-    -- 可以依實際 schema 調整條件（例如 status = 'online' / 'healthy'）
+    -- 依據目前 active monitor 數量選擇最空閒的 online 節點
+    -- 說明：
+    --   - 僅考慮 status = 'online' 的節點
+    --   - 使用 LEFT JOIN + COUNT(m.id) 統計各節點 active=1 的監控數量
+    --   - ORDER BY monitor_count ASC, node_id ASC：優先選擇監控最少的節點；數量相同時依 node_id 穩定排序
     local sql = [[
-        SELECT 
-            node_id
-        FROM node
-        WHERE status = 'online'
-        ORDER BY node_id
+        SELECT
+            n.node_id,
+            COUNT(m.id) AS monitor_count
+        FROM node n
+        LEFT JOIN monitor m
+            ON m.node_id = n.node_id
+           AND m.active = 1
+        WHERE n.status = 'online'
+        GROUP BY n.node_id
+        ORDER BY monitor_count ASC, n.node_id ASC
+        LIMIT 1
     ]]
 
     local res, qerr = db:query(sql)
     db:close()
 
     if not res or #res == 0 then
-        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes found, fallback to node1")
+        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes with capacity found, fallback to node1")
         return "uptime-kuma-node1", 3001
     end
 
-    -- 簡單的均衡策略：
-    -- 使用當前時間與節點數做一個輪詢式選擇，避免每次都打同一個節點
-    local node_count = #res
-    local index = (ngx.now() * 1000) % node_count + 1
-    index = math.floor(index)
-
-    local node_id = res[index].node_id or "node1"
+    local row = res[1]
+    local node_id = row.node_id or "node1"
+    local monitor_count = tonumber(row.monitor_count) or 0
 
     -- node_id 例如 "node2" -> 映射到 Docker 服務名稱 "uptime-kuma-node2"
     local host = "uptime-kuma-" .. node_id
     local port = 3001
 
-    ngx.log(ngx.INFO, "pick_node_for_request: routed to ", host, ":", port)
+    ngx.log(ngx.INFO,
+        "pick_node_for_request: routed to ", host, ":", port,
+        " with current monitor_count=", monitor_count
+    )
     return host, port
 end
 
