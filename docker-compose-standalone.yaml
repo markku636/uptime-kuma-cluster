@@ -118,6 +118,41 @@ services:
       uptime-kuma-node1:
         condition: service_healthy
 
+  # --- 應用節點 3 (Worker Node 3) ---
+  uptime-kuma-node3:
+    <<: *node-base
+    container_name: uptime-kuma-node3
+    ports:
+      - "8089:3001"
+    volumes:
+      - ./data/node3:/app/data
+    environment:
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: "node3"
+      UPTIME_KUMA_NODE_NAME: "node3"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
+
+  # --- 應用節點 4 (Worker Node 4) ---
+  uptime-kuma-node4:
+    <<: *node-base
+    container_name: uptime-kuma-node4
+    ports:
+      - "8090:3001"
+    volumes:
+      - ./data/node4:/app/data
+    environment:
+      <<: *common-env
+      UPTIME_KUMA_NODE_ID: "node4"
+      UPTIME_KUMA_NODE_NAME: "node4"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
+      UPTIME_KUMA_SKIP_MIGRATE: "true"
+    depends_on:
+      uptime-kuma-node1:
+        condition: service_healthy
+
 volumes:
   kuma-db:
     driver: local
