@@ -13,7 +13,6 @@ local DB_CONFIG = {
 
 -- 共享記憶體
 local routing_cache = ngx.shared.monitor_routing
-local capacity_cache = ngx.shared.node_capacity
 
 -- 資料庫連接
 local function db_connect()
@@ -232,6 +231,49 @@ function _M.get_node_capacity()
         limit_per_node = MONITOR_LIMIT_PER_NODE,
         nodes = res
     }
+end
+
+-- 動態為當前請求選擇節點（提供給 balancer_by_lua_block 使用）
+-- 回傳值：host, port
+function _M.pick_node_for_request()
+    local db, err = db_connect()
+    if not db then
+        ngx.log(ngx.ERR, "pick_node_for_request: cannot connect to DB, fallback to node1")
+        return "uptime-kuma-node1", 3001
+    end
+
+    -- 依節點狀態從 node table 取得可用節點
+    -- 可以依實際 schema 調整條件（例如 status = 'online' / 'healthy'）
+    local sql = [[
+        SELECT 
+            node_id
+        FROM node
+        WHERE status = 'online'
+        ORDER BY node_id
+    ]]
+
+    local res, qerr = db:query(sql)
+    db:close()
+
+    if not res or #res == 0 then
+        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes found, fallback to node1")
+        return "uptime-kuma-node1", 3001
+    end
+
+    -- 簡單的均衡策略：
+    -- 使用當前時間與節點數做一個輪詢式選擇，避免每次都打同一個節點
+    local node_count = #res
+    local index = (ngx.now() * 1000) % node_count + 1
+    index = math.floor(index)
+
+    local node_id = res[index].node_id or "node1"
+
+    -- node_id 例如 "node2" -> 映射到 Docker 服務名稱 "uptime-kuma-node2"
+    local host = "uptime-kuma-" .. node_id
+    local port = 3001
+
+    ngx.log(ngx.INFO, "pick_node_for_request: routed to ", host, ":", port)
+    return host, port
 end
 
 return _M

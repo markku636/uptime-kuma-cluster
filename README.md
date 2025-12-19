@@ -37,11 +37,11 @@ Invoke-WebRequest -Uri 'http://localhost/api/system-status' | Select-Object -Exp
 
 | 特性 | 描述 |
 | :--- | :--- |
-| **⚖️ 智能負載平衡** | 根據節點當前的監控器數量（Monitor Count）計算負載分數，自動將請求路由至最空閒的節點。 |
-| **💓 主動健康檢查** | 系統每 **60秒** 對節點進行一次主動健康檢查，確保節點響應正常。 |
-| **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點。 |
-| **🛡️ 節點恢復管理** | 內建 **5分鐘** 的冷靜恢復機制，防止節點頻繁震盪（Flapping）影響系統穩定性。 |
-| **⚖️ 監控器再平衡** | 支援手動或自動觸發監控器重新分配，確保長期運行下的集群負載均衡。 |
+| **⚖️ 智能負載平衡（動態 Lua balancer）** | 透過 OpenResty `balancer_by_lua_block`，在每次請求時由 `monitor_router.pick_node_for_request()` 即時計算並選擇後端節點，無需在 `nginx.conf` 中寫死節點列表。 |
+| **💓 主動健康檢查** | 系統每 **30 秒**（可配置）對節點進行主動健康檢查，結果寫入資料庫 `node` 表，提供路由決策依據。 |
+| **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點，並更新 DB 狀態。 |
+| **🛡️ 節點恢復管理** | 節點恢復健康後，會自動還原先前轉移走的監控任務，避免長期失衡。 |
+| **📊 節點容量查詢** | 透過 `/lb/capacity` API 直接從 DB 查詢每個節點當前的監控數量與使用率，方便觀察負載。 |
 
 -----
 
@@ -87,13 +87,14 @@ graph TD
     Node3 --> DB
 ```
 
-### 負載平衡決策流程
+### 負載平衡決策流程（動態 Lua balancer 版）
 
-1.  **請求到達**：Nginx 接收到客戶端請求。
-2.  **獲取負載**：Lua 腳本從共享記憶體讀取各節點當前的監控器數量。
-3.  **計算分數**：使用公式 `Score = 1 / (monitor_count + 1)` 計算負載分數。
-4.  **選擇節點**：選擇分數最高（負載最低）的節點進行路由。
-5.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點。
+1.  **請求到達**：Nginx `location` 收到請求，統一 `proxy_pass` 到 `upstream uptime_kuma_cluster`。
+2.  **Lua 介入**：`balancer_by_lua_block` 透過 `require "monitor_router"` 呼叫 `pick_node_for_request()`。
+3.  **查詢節點狀態**：`pick_node_for_request()` 直接查詢資料庫 `node` 表，取得 `status = 'online'` 的節點列表。
+4.  **選擇節點**：根據目前在線節點數做簡單輪詢（可擴充為依容量、權重等進階演算法），選出一個 `node_id`，並映射為 Docker 服務名 `uptime-kuma-nodeX`。
+5.  **設置目標節點**：Lua 透過 `ngx.balancer.set_current_peer(host, port)` 設置實際上游節點。
+6.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點並完成回應。
 
 -----
 
@@ -101,31 +102,31 @@ graph TD
 
 系統核心邏輯由兩個主要的 Lua 模組構成：
 
-### 1\. 負載平衡器 (`load_balancer.lua`)
+### 1\. 路由與負載平衡模組 (`monitor_router.lua`)
 
-負責處理請求分發邏輯與負載計算。
+負責處理請求分發邏輯與節點資訊查詢。
 
   * **核心職責**：
-      * **負載決策**：執行節點選擇算法。
-      * **狀態更新**：每 **30秒** 更新一次節點的負載資訊。
-      * **再平衡**：提供手動觸發重新分配監控器的功能。
+      * **動態節點選擇**：`pick_node_for_request()` 在每次請求時，根據 `node` 表當前的線上節點決定要連到哪一個 `uptime-kuma-nodeX`。
+      * **監控路由輔助**：`route_by_monitor_id()` / `route_new_monitor()` 等函式提供基於 DB 的監控分配邏輯（供應用層或之後擴充使用）。
+      * **集群資訊查詢**：`get_cluster_status()`、`get_node_capacity()` 直接從 DB 彙總節點狀態與容量，並透過 `/lb/health`、`/lb/capacity` 暴露給前端或外部系統。
   * **關鍵函數**：
-      * `balance_load()`: 執行負載平衡邏輯。
-      * `get_best_node()`: 比較分數並返回最佳節點。
-      * `trigger_manual_rebalancing()`: 觸發監控任務的重新分配。
+      * `pick_node_for_request()`: 提供給 `balancer_by_lua_block` 使用，回傳 `(host, port)` 作為當前請求的實際 upstream。
+      * `get_cluster_status()`: 查詢所有節點的狀態與監控數量。
+      * `get_node_capacity()`: 查詢每個節點的 monitor 數量與使用百分比。
 
 ### 2\. 健康檢查模組 (`health_check.lua`)
 
 負責維護集群穩定性與故障處理。
 
   * **核心職責**：
-      * **心跳機制**：每 **60秒** 發送心跳包。
-      * **故障檢測**：每 **10秒** 高頻掃描節點狀態。
-      * **故障轉移**：當節點標記為 `offline` 時，執行監控器轉移邏輯。
+      * **節點健康檢查**：定期對每個節點的 `/api/v1/health` 發出 HTTP 檢查。
+      * **故障檢測與轉移**：當節點連續多次檢查失敗時，標記為 `offline`，並呼叫 `redistribute_monitors_from_node()` 進行監控任務重新分配。
+      * **節點恢復**：節點恢復健康後，透過 `revert_monitors_to_node()` 將先前轉移的監控任務還原。
   * **關鍵函數**：
-      * `perform_health_check()`: 執行 HTTP/TCP 探測。
-      * `check_nodes_and_handle_failover()`: 核心故障轉移邏輯。
-      * `handle_node_failover()`: 具體執行資料庫層面的任務轉移。
+      * `run_health_check()`: 單次健康檢查流程，更新 DB 與 shared dict。
+      * `health_check_worker()`: 以定時 loop 方式週期性執行健康檢查。
+      * `get_statistics()`: 提供 `/api/health-status` 使用的統計資訊。
 
 -----
 
@@ -176,17 +177,17 @@ UPTIME_KUMA_NODE_HOST=127.0.0.1
 
 ### 2\. Nginx 共享記憶體
 
-在 `nginx.conf` 的 `http` 區塊中定義 Lua 共享字典：
+在 `nginx.conf` 的 `http` 區塊中定義 Lua 共享字典（節錄）：
 
 ```nginx
 http {
-    # ... 其他配置
-    
-    # 分配共享記憶體區域
-    lua_shared_dict load_balancer 10m;    # 存儲負載狀態
-    lua_shared_dict fault_detector 5m;    # 存儲故障檢測計數
-    lua_shared_dict health_checker 5m;    # 存儲健康檢查結果
-    
+    # ...
+
+    # 共享記憶體區域
+    lua_shared_dict health_checker 10m;   # 存儲健康檢查結果與統計
+    lua_shared_dict monitor_routing 10m;  # 監控 ID -> 節點的路由快取
+    lua_shared_dict node_capacity 1m;     # （預留）節點容量資訊快取，未必在所有版本中使用
+
     # ...
 }
 ```

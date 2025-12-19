@@ -1,46 +1,15 @@
-# Uptime Kuma Cluster - Standalone Build & Run Configuration
-# This version includes build contexts to allow building and running without external pre-built images.
+version: "3.8"
 
-version: '3.8'
+volumes:
+  kuma-db:
+    driver: local
 
-# 1. 基礎配置與環境變數模板 (Common Environment Variables)
-x-common-env: &common-env
-  UPTIME_KUMA_DB_TYPE: "mariadb"
-  UPTIME_KUMA_DB_HOSTNAME: "mariadb"
-  UPTIME_KUMA_DB_PORT: "3306"
-  UPTIME_KUMA_DB_NAME: "kuma"
-  UPTIME_KUMA_DB_USERNAME: "kuma"
-  UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
-  UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
-  UPTIME_KUMA_TRUST_PROXY: "true"
-
-x-openresty-env: &openresty-env
-  DB_HOST: "mariadb"
-  DB_PORT: "3306"
-  DB_USER: "kuma"
-  DB_PASSWORD: "kuma_pass"
-  DB_NAME: "kuma"
-  EMMY_DEBUG_ENABLED: "false"
-
-# Uptime Kuma 節點基礎配置 (Uptime Kuma Node Base Configuration)
-x-node-base: &node-base
-  build:
-    context: .
-    dockerfile: docker/dockerfile
-    target: release
-  image: uptime-kuma-cluster-node:latest
-  restart: unless-stopped
-  networks:
-    - kuma-network
-  healthcheck:
-    test: ["CMD-SHELL", "node extra/healthcheck.js"]
-    interval: 30s
-    timeout: 30s
-    retries: 3
-    start_period: 30s
+networks:
+  kuma-network:
+    driver: bridge
 
 services:
-  # --- 資料庫服務 (Database Service) ---
+  # Database
   mariadb:
     image: mariadb:10
     container_name: uptime-kuma-mariadb
@@ -63,100 +32,57 @@ services:
       retries: 5
       start_period: 20s
 
-  # --- 負載平衡器 (Load Balancer - OpenResty) ---
+  # OpenResty load balancer / reverse proxy
   openresty:
     build:
       context: .
-      dockerfile: docker/openresty.dockerfile
-    image: uptime-kuma-openresty:latest
+      dockerfile: nginx/Dockerfile
+    image: uptimekuma-openresty:standalone
     container_name: uptime-kuma-openresty
     restart: unless-stopped
     ports:
       - "8084:80"
-    volumes:
-      - ./nginx-cluster.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-      - ./lua:/usr/local/openresty/nginx/lua:ro
+      # - "443:443"   # enable when SSL is configured
     environment:
-      <<: *openresty-env
+      DB_HOST: "mariadb"
+      DB_PORT: "3306"
+      DB_USER: "kuma"
+      DB_PASSWORD: "kuma_pass"
+      DB_NAME: "kuma"
+      EMMY_DEBUG_ENABLED: "false"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_started
+    networks:
+      - kuma-network
+
+  # Single Uptime Kuma node
+  uptime-kuma-node1:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:latest}
+    container_name: uptime-kuma-node1
+    restart: unless-stopped
+    volumes:
+      - ./data/node1:/app/data
+    ports:
+      - "3001:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node1"
+      UPTIME_KUMA_NODE_NAME: "node1"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
     depends_on:
       mariadb:
         condition: service_healthy
     networks:
       - kuma-network
 
-  # --- 應用節點 1 (Main Node) ---
-  uptime-kuma-node1:
-    <<: *node-base
-    container_name: uptime-kuma-node1
-    ports:
-      - "8087:3001"
-    volumes:
-      - ./data/node1:/app/data
-    environment:
-      <<: *common-env
-      UPTIME_KUMA_NODE_ID: "node1"
-      UPTIME_KUMA_NODE_NAME: "node1"
-      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
-    depends_on:
-      mariadb:
-        condition: service_healthy
-
-  # --- 應用節點 2 (Worker Node 2) ---
-  uptime-kuma-node2:
-    <<: *node-base
-    container_name: uptime-kuma-node2
-    ports:
-      - "8088:3001"
-    volumes:
-      - ./data/node2:/app/data
-    environment:
-      <<: *common-env
-      UPTIME_KUMA_NODE_ID: "node2"
-      UPTIME_KUMA_NODE_NAME: "node2"
-      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
-    depends_on:
-      uptime-kuma-node1:
-        condition: service_healthy
-
-  # --- 應用節點 3 (Worker Node 3) ---
-  uptime-kuma-node3:
-    <<: *node-base
-    container_name: uptime-kuma-node3
-    ports:
-      - "8089:3001"
-    volumes:
-      - ./data/node3:/app/data
-    environment:
-      <<: *common-env
-      UPTIME_KUMA_NODE_ID: "node3"
-      UPTIME_KUMA_NODE_NAME: "node3"
-      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
-    depends_on:
-      uptime-kuma-node1:
-        condition: service_healthy
-
-  # --- 應用節點 4 (Worker Node 4) ---
-  uptime-kuma-node4:
-    <<: *node-base
-    container_name: uptime-kuma-node4
-    ports:
-      - "8090:3001"
-    volumes:
-      - ./data/node4:/app/data
-    environment:
-      <<: *common-env
-      UPTIME_KUMA_NODE_ID: "node4"
-      UPTIME_KUMA_NODE_NAME: "node4"
-      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
-      UPTIME_KUMA_SKIP_MIGRATE: "true"
-    depends_on:
-      uptime-kuma-node1:
-        condition: service_healthy
-
-volumes:
-  kuma-db:
-    driver: local
-
-networks:
-  kuma-network:
-    driver: bridge
