@@ -15,18 +15,24 @@
 
 ```powershell
 # 於專案根目錄執行
-& 'C:\Program Files\Docker\Docker\resources\bin\docker.EXE' compose -f 'docker-compose-cluster.yaml' up -d --build
+docker compose -f docker-compose-cluster.yaml up -d --build
 
 # 查看容器狀態
-& 'C:\Program Files\Docker\Docker\resources\bin\docker.EXE' ps
-
-# 檢查健康狀態 API（代理）
-Invoke-WebRequest -Uri 'http://localhost/api/system-status' | Select-Object -ExpandProperty Content
+docker ps
 ```
+
+> 提示：已安裝 Docker Desktop 時，直接使用 `docker compose` 指令即可，無需指定 `docker.EXE` 路徑。
 
 - **單機開發模式（僅後端 / 前端）**：
   - 後端（Node）：`node start-server.js`
   - 前端（Vite）：`npm run dev`
+
+- **REST Client 測試（`set-up.http`）**：
+  - 在 VS Code 安裝「REST Client」擴充套件。
+  - 開啟 `set-up.http`，點擊各段落的 `Send Request` 測試以下端點：
+    - `GET http://localhost/health`（OpenResty 健康）
+    - `GET http://localhost/api/system-status`（系統綜合狀態）
+    - 其他 Kuma 與負載平衡相關 API，詳見檔案內註解。
 
 如需更完整的部署與集群說明，請參考 `CLUSTER_DEPLOYMENT_GUIDE.md` 與 `nginx.conf`。
 
