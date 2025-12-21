@@ -1,0 +1,69 @@
+stages:
+  - build
+  - push
+
+variables:
+  IMAGE_NAME: uptime-kuma
+  BRANCH_NAME: ${CI_COMMIT_REF_NAME}
+  # REGISTRY_URL, REGISTRY_USER, REGISTRY_PASSWORD 已移至 GitLab CI/CD Variables
+
+build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  before_script:
+    - echo "=== Debug Information ==="
+    - echo "REGISTRY_URL variable:${REGISTRY_URL}"
+    - REGISTRY_HOST="${REGISTRY_URL#http://}"; REGISTRY_HOST="${REGISTRY_HOST#https://}"; REGISTRY_HOST=$(echo "$REGISTRY_HOST" | tr -d '[:space:]'); export REGISTRY_HOST
+    - echo "REGISTRY_HOST (normalized):${REGISTRY_HOST}"
+    - echo "IMAGE_NAME variable:${IMAGE_NAME}"
+    - echo "BRANCH_NAME variable:${BRANCH_NAME}"
+    - echo "Current working directory:$(pwd)"
+    - echo "=== End Debug Information ==="
+    - echo "Setting up Kaniko authentication..."
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${REGISTRY_URL}\":{\"auth\":\"$(printf "%s:%s" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+  script:
+    - sed 's#\\"https://\\([^/"]*\\)\\"#\\"\1\\"#' -i /kaniko/.docker/config.json
+    - echo "=== 使用 Kaniko 建置並推送 Docker 映像檔 ==="
+    - echo "Building image for commit:${CI_COMMIT_SHORT_SHA}"
+    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile --destination ${REGISTRY_HOST}/library/${IMAGE_NAME}/${BRANCH_NAME}:${CI_COMMIT_SHORT_SHA} --cache=true --cache-ttl=24h --verbosity=info --skip-tls-verify --insecure-registry=${REGISTRY_HOST}
+    - echo "Kaniko build and push completed successfully"
+    - echo "IMAGE_TAG=${REGISTRY_HOST}/library/${IMAGE_NAME}/${BRANCH_NAME}:${CI_COMMIT_SHORT_SHA}" > build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+  only:
+    - main
+  tags:
+    - k8s-gitlab-runner
+
+tag_latest:
+  stage: push
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  needs: ["build"]
+  before_script:
+    - echo "=== Debug Information ==="
+    - echo "REGISTRY_URL variable:${REGISTRY_URL}"
+    - REGISTRY_HOST="${REGISTRY_URL#http://}"; REGISTRY_HOST="${REGISTRY_HOST#https://}"; REGISTRY_HOST=$(echo "$REGISTRY_HOST" | tr -d '[:space:]'); export REGISTRY_HOST
+    - echo "REGISTRY_HOST (normalized):${REGISTRY_HOST}"
+    - echo "IMAGE_NAME variable:${IMAGE_NAME}"
+    - echo "BRANCH_NAME variable:${BRANCH_NAME}"
+    - echo "=== End Debug Information ==="
+    - echo "Setting up crane authentication..."
+    - echo "${REGISTRY_PASSWORD}" | crane auth login ${REGISTRY_HOST} -u ${REGISTRY_USER} --password-stdin --insecure
+    - echo "Crane authentication completed"
+  script:
+    - echo "=== 使用 Crane 標記為 latest 版本 ==="
+    - crane tag ${REGISTRY_HOST}/library/${IMAGE_NAME}/${BRANCH_NAME}:${CI_COMMIT_SHORT_SHA} latest --insecure
+    - echo "Latest tag created successfully"
+    - echo "Verifying latest tag..."
+    - crane manifest ${REGISTRY_HOST}/library/${IMAGE_NAME}:latest --insecure > /dev/null && echo "Latest tag verification successful" || echo "Latest tag verification failed"
+  only:
+    - main
+  tags:
+    - k8s-gitlab-runner
+  allow_failure: true
