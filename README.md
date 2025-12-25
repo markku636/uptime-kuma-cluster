@@ -1,72 +1,188 @@
+# Uptime Kuma Cluster
+
+<div align="center">
+
+![OpenResty](https://img.shields.io/badge/OpenResty-Nginx-green?style=flat-square)
+![Lua](https://img.shields.io/badge/Lua-5.1-blue?style=flat-square)
+![MariaDB](https://img.shields.io/badge/MariaDB-10.x-orange?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square)
+
+**高可用 Uptime Kuma 集群解決方案 | High-Availability Uptime Kuma Cluster Solution**
+
+[快速開始 Quick Start](#-快速開始quick-start) • [功能特性 Features](#-功能特性features) • [API 文件 API Docs](#-api-接口api-endpoints) • [部署指南 Deployment](#-部署指南deployment-guide)
+
+</div>
+
 -----
 
-## 🎯 系統概述
+## 🎯 系統概述 | Overview
 
-本專案是一個基於 **Nginx OpenResty** 的智能負載平衡和健康檢查系統，專為 **Uptime Kuma** 的多節點集群部署而設計。系統透過 Lua 腳本實現了應用層級的邏輯，具備自動故障檢測、故障轉移（Failover）、智能負載分配以及監控任務的重新平衡（Rebalancing）功能，確保監控服務的高可用性（HA），並為了上架自動化，並擴充了restful api 的功能。
+本專案是一個基於 **Nginx OpenResty** 的智能負載平衡和健康檢查系統，專為 **Uptime Kuma** 的多節點集群部署而設計。系統透過 Lua 腳本實現了應用層級的邏輯，具備自動故障檢測、故障轉移（Failover）、智能負載分配以及監控任務的重新平衡（Rebalancing）功能，確保監控服務的高可用性（HA）。
 
-- 部落格詳解（架構與實作心法）：https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/
+> This project is an intelligent load balancing and health check system based on **Nginx OpenResty**, designed for multi-node cluster deployment of **Uptime Kuma**. The system implements application-level logic through Lua scripts, featuring automatic fault detection, failover, intelligent load distribution, and monitor task rebalancing to ensure high availability (HA) of monitoring services.
+
+📖 部落格詳解（架構與實作心法）| Blog Post: https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/
 
 -----
 
-## 🚀 快速開始（Windows）
+## 🚀 快速開始 | Quick Start
 
-- **前置需求**：已安裝 Docker Desktop；已安裝 Node.js 18+；PowerShell 5.1（預設）。
-- **啟動三節點叢集 + OpenResty 代理**：
+### 前置需求 | Prerequisites
+- Docker Desktop 已安裝 | Docker Desktop installed
+- Node.js 18+ 已安裝 | Node.js 18+ installed  
+- PowerShell 5.1（Windows 預設）| PowerShell 5.1 (Windows default)
+
+### 啟動集群 | Start Cluster
 
 ```powershell
-# 於專案根目錄執行
+# 於專案根目錄執行 | Run in project root
 docker compose -f docker-compose-cluster.yaml up -d --build
 
-# 查看容器狀態
+# 查看容器狀態 | Check container status
 docker ps
 ```
 
-> 提示：已安裝 Docker Desktop 時，直接使用 `docker compose` 指令即可，無需指定 `docker.EXE` 路徑。
+> 💡 提示：已安裝 Docker Desktop 時，直接使用 `docker compose` 指令即可。
+> Tip: With Docker Desktop installed, just use `docker compose` command directly.
 
-- **單機開發模式（僅後端 / 前端）**：
-  - 後端（Node）：`node start-server.js`
-  - 前端（Vite）：`npm run dev`
+### 單機開發模式 | Single Node Development
 
-- **REST Client API 設定 / 測試（`set-up.http`）**：
-  - 在 VS Code 安裝「REST Client」擴充套件。
-  - 開啟 `set-up.http`，點擊各段落的 `Send Request` 測試以下端點：
-    - `GET http://localhost/health`（OpenResty 健康）
-    - `GET http://localhost/api/system-status`（系統綜合狀態）
-    - 其他 Kuma 與負載平衡相關 API，詳見檔案內註解。
+```powershell
+# 後端 Backend (Node.js)
+node start-server.js
 
-如需更完整的部署與集群說明，請參考 `CLUSTER_DEPLOYMENT_GUIDE.md` 與 `nginx.conf`。
+# 前端 Frontend (Vite)
+npm run dev
+```
+
+### 驗證安裝 | Verify Installation
+
+使用 VS Code REST Client 開啟 `set-up.http` 測試：
+> Open `set-up.http` with VS Code REST Client to test:
+
+```http
+GET http://localhost/health              # OpenResty 健康狀態 | Health status
+GET http://localhost/lb/health           # 集群健康狀態 | Cluster health
+GET http://localhost/lb/available-nodes  # 可用節點列表 | Available nodes
+```
 
 -----
 
-## ⚡ 功能特性
+## ⚡ 功能特性 | Features
 
-| 特性 | 描述 |
+| 特性 Feature | 描述 Description |
 | :--- | :--- |
-| **⚖️ 兩階段智能負載平衡** | 採用 access + balancer 兩階段架構：在 `access_by_lua` 階段完成 DB 查詢與 DNS 解析，在 `balancer_by_lua` 階段設置上游節點，完美解決 OpenResty API 限制問題。 |
-| **💓 主動健康檢查** | 系統每 **30 秒**（可配置）對節點進行主動健康檢查，結果寫入資料庫 `node` 表，提供路由決策依據。 |
-| **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點，並更新 DB 狀態。 |
-| **🛡️ 節點恢復管理** | 節點恢復健康後，會自動還原先前轉移走的監控任務，避免長期失衡。 |
-| **📊 節點容量查詢** | 透過 `/lb/capacity` API 直接從 DB 查詢每個節點當前的監控數量與使用率，方便觀察負載。 |
-| **🌐 Docker DNS 整合** | 使用 Docker 內建 DNS (127.0.0.11) 解析服務名為 IP，支援容器動態 IP 環境。 |
+| **⚖️ 兩階段智能負載平衡** | 採用 access + balancer 兩階段架構：在 `access_by_lua` 階段完成 DB 查詢與 DNS 解析，在 `balancer_by_lua` 階段設置上游節點。 |
+| Two-Phase Smart Load Balancing | Uses access + balancer two-phase architecture: DB queries and DNS resolution in `access_by_lua`, upstream node selection in `balancer_by_lua`. |
+| **💓 主動健康檢查** | 系統每 **30 秒**對節點進行主動健康檢查，結果寫入資料庫 `node` 表。 |
+| Active Health Check | System performs active health checks on nodes every **30 seconds**, results written to database `node` table. |
+| **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點。 |
+| Auto Failover | When node failure is detected (3 consecutive failures), automatically transfers monitoring tasks to other healthy nodes. |
+| **🛡️ 節點恢復管理** | 節點恢復健康後，自動還原先前轉移走的監控任務。 |
+| Node Recovery Management | After node recovers, automatically restores previously transferred monitoring tasks. |
+| **📊 節點容量查詢** | 透過 `/lb/capacity` API 查詢每個節點當前的監控數量與使用率。 |
+| Node Capacity Query | Query each node's current monitor count and utilization via `/lb/capacity` API. |
+| **🎯 固定節點路由（新功能）** | 透過 Cookie 將請求固定路由到指定節點，方便開發調試。 |
+| Fixed Node Routing (New) | Route requests to a specific node via Cookie, convenient for development and debugging. |
+| **🌐 Docker DNS 整合** | 使用 Docker 內建 DNS (127.0.0.11) 解析服務名為 IP。 |
+| Docker DNS Integration | Uses Docker built-in DNS (127.0.0.11) to resolve service names to IP. |
 
 -----
 
-## 📦 目錄導覽
+## 📦 目錄導覽 | Directory Structure
 
-- `docker-compose-cluster.yaml`：啟動多節點 Uptime Kuma + OpenResty 代理的 Compose 檔。
-- `nginx/`、`nginx.conf`：OpenResty/Nginx 主設定與站台設定。
-- `lua/`：負載平衡與健康檢查 Lua 腳本。
-- `server/`：Kuma 伺服端邏輯（認證、作業排程、通知等）。
-- `db/`：資料庫初始化與遷移腳本（Knex）。
-- `extra/`：輔助工具與腳本，例如版本更新、健康檢查、範例伺服器等。
-- `public/`、`src/`：前端資源與程式碼。
-- `API_DOCUMENTATION.md`：HTTP API 詳細說明與使用範例。
+| 目錄/檔案 | 說明 Description |
+| :--- | :--- |
+| `docker-compose-cluster.yaml` | 啟動多節點 Uptime Kuma + OpenResty 的 Compose 檔 |
+| `nginx/`, `nginx.conf` | OpenResty/Nginx 主設定與站台設定 |
+| `lua/` | 負載平衡與健康檢查 Lua 腳本 |
+| `server/` | Kuma 伺服端邏輯（認證、排程、通知等） |
+| `db/` | 資料庫初始化與遷移腳本（Knex） |
+| `extra/` | 輔助工具與腳本 |
+| `public/`, `src/` | 前端資源與程式碼 |
+| `API_DOCUMENTATION.md` | HTTP API 詳細說明與使用範例 |
 
 -----
 
-## 🏗️ 架構設計
+## 🎯 固定節點路由 | Fixed Node Routing
 
-### 系統邏輯架構
+此功能允許開發者透過 Cookie 將所有請求固定路由到指定的節點，方便調試和測試。清除 Cookie 後即恢復正常的負載均衡。
+
+> This feature allows developers to route all requests to a specific node via Cookie for debugging and testing. Clearing the Cookie restores normal load balancing.
+
+### 🔗 簡易 URL 操作 | Simple URL Operations
+
+最簡單的方式：直接在瀏覽器訪問以下 URL：
+> The easiest way: visit the following URLs directly in your browser:
+
+| 操作 Action | URL | 說明 Description |
+| :--- | :--- | :--- |
+| 設定到 node1 | `GET /lb/fixed-node/node1` | 所有請求路由到 node1 / Route all requests to node1 |
+| 設定到 node2 | `GET /lb/fixed-node/node2` | 所有請求路由到 node2 / Route all requests to node2 |
+| 設定到 node3 | `GET /lb/fixed-node/node3` | 所有請求路由到 node3 / Route all requests to node3 |
+| **清除設定** | `GET /lb/clear-fixed-node` | 恢復負載均衡 / Restore load balancing |
+
+### 📝 使用範例 | Usage Example
+
+```bash
+# 1. 查看可用節點 | View available nodes
+curl http://localhost/lb/available-nodes
+
+# 2. 設定固定節點（瀏覽器直接訪問）| Set fixed node (visit in browser)
+# http://localhost/lb/fixed-node/node2
+
+# 3. 驗證設定 | Verify setting
+curl http://localhost/lb/fixed-node-status
+
+# 4. 清除設定（瀏覽器直接訪問）| Clear setting (visit in browser)
+# http://localhost/lb/clear-fixed-node
+```
+
+### 🔧 API 操作 | API Operations
+
+若需程式化操作，可使用 JSON API：
+> For programmatic operations, use JSON API:
+
+```bash
+# 設定固定節點 | Set fixed node
+curl -X POST http://localhost/lb/set-fixed-node \
+  -H "Content-Type: application/json" \
+  -d '{"node": "node2", "expires": 604800}'
+
+# 清除固定節點 | Clear fixed node
+curl -X POST http://localhost/lb/clear-fixed-node
+
+# 查看狀態 | View status
+curl http://localhost/lb/fixed-node-status
+```
+
+### 📊 Response 標頭 | Response Headers
+
+設定固定節點後，所有回應會包含以下標頭：
+> After setting a fixed node, all responses will include these headers:
+
+| Header | 值 Value | 說明 Description |
+| :--- | :--- | :--- |
+| `X-Routed-Via` | `fixed-node` 或 `load-balancer` | 路由方式 / Routing method |
+| `X-Routed-To` | `uptime-kuma-node2` | 實際路由到的節點 / Actual routed node |
+
+### ⚠️ 注意事項 | Notes
+
+- Cookie 名稱：`KUMA_FIXED_NODE`
+- 預設有效期：7 天（可透過 API 自訂）
+- 若指定的節點離線，系統會自動清除 Cookie 並恢復負載均衡
+- 此功能主要用於開發調試，生產環境請謹慎使用
+
+> - Cookie name: `KUMA_FIXED_NODE`
+> - Default expiry: 7 days (customizable via API)
+> - If the specified node goes offline, the system will automatically clear the Cookie and restore load balancing
+> - This feature is mainly for development debugging, use cautiously in production
+
+-----
+
+## 🏗️ 架構設計 | Architecture
+
+### 系統邏輯架構 | System Logic Architecture
 
 ```mermaid
 graph TD
@@ -93,7 +209,9 @@ graph TD
     Node3 --> DB
 ```
 
-### 負載平衡決策流程（兩階段 Lua 路由架構）
+### 負載平衡決策流程 | Load Balancing Decision Flow
+
+（兩階段 Lua 路由架構 | Two-Phase Lua Routing Architecture）
 
 由於 OpenResty 的 `balancer_by_lua*` 階段有 API 限制（無法使用 `ngx.socket.tcp()` 等 cosocket API），系統採用**兩階段架構**來實現動態路由：
 
@@ -122,14 +240,14 @@ sequenceDiagram
     Node-->>Client: HTTP Response
 ```
 
-#### 階段說明
+#### 階段說明 | Phase Description
 
 | 階段 | Nginx Directive | 可用 API | 職責 |
 |:---|:---|:---|:---|
 | **Access 階段** | `access_by_lua_block` | ✅ Socket、MySQL、DNS 解析 | 查詢 DB 選擇節點、解析 DNS 為 IP、存入 `ngx.ctx` |
 | **Balancer 階段** | `balancer_by_lua_block` | ❌ 僅限 `ngx.balancer` API | 從 `ngx.ctx` 讀取預選結果、呼叫 `set_current_peer()` |
 
-#### 詳細流程
+#### 詳細流程 | Detailed Flow
 
 1.  **請求到達**：Nginx `location` 收到請求。
 2.  **Access 階段 - 預選節點**：`access_by_lua_block` 呼叫 `router.preselect_node()`：
@@ -143,7 +261,7 @@ sequenceDiagram
     - 透過 `ngx.balancer.set_current_peer(ip, port)` 設置實際上游節點
 4.  **後端處理**：請求被轉發至選定的 Uptime Kuma 節點並完成回應。
 
-#### 為什麼需要兩階段？
+#### 為什麼需要兩階段？| Why Two Phases?
 
 OpenResty 的 `balancer_by_lua*` 階段運行在 Nginx 的連接建立過程中，此時以下 API 被禁用：
 - `ngx.socket.tcp()` - 無法建立 TCP 連接（包括 MySQL 連接）
@@ -154,7 +272,7 @@ OpenResty 的 `balancer_by_lua*` 階段運行在 Nginx 的連接建立過程中�
 
 -----
 
-## 🔧 模組說明
+## 🔧 模組說明 | Module Description
 
 系統核心邏輯由兩個主要的 Lua 模組構成：
 
@@ -235,11 +353,12 @@ OpenResty 內建一個全域物件 `ngx`，提供：
 
 -----
 
-## 🌐 API 接口
+## 🌐 API 接口 | API Endpoints
 
-openresty 提供了一系列 HTTP API 用於監控狀態與管理集群。
+OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
+> OpenResty provides a series of HTTP APIs for monitoring status and managing the cluster.
 
-### 🔍 狀態監控
+### 🔍 狀態監控 | Status Monitoring
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
@@ -250,7 +369,18 @@ openresty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 | `GET` | `/api/health-check-status` | 查看心跳統計、故障轉移歷史記錄。 |
 | `GET` | `/api/fault-detection-status` | 查看故障檢測掃描器的運行統計。 |
 
-### ⚙️ 管理與操作
+### 🎯 固定節點路由 | Fixed Node Routing
+
+| 方法 Method | 路徑 Path | 描述 Description |
+| :--- | :--- | :--- |
+| `GET` | `/lb/fixed-node/{node}` | 設定固定節點（HTML 頁面）/ Set fixed node (HTML page) |
+| `GET` | `/lb/clear-fixed-node` | 清除固定節點（HTML 頁面）/ Clear fixed node (HTML page) |
+| `POST` | `/lb/set-fixed-node` | 設定固定節點（JSON API）/ Set fixed node (JSON API) |
+| `POST` | `/lb/clear-fixed-node` | 清除固定節點（JSON API）/ Clear fixed node (JSON API) |
+| `GET` | `/lb/fixed-node-status` | 查看當前固定節點狀態 / View current fixed node status |
+| `GET` | `/lb/available-nodes` | 列出所有可用節點 / List all available nodes |
+
+### ⚙️ 管理與操作 | Management & Operations
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
@@ -261,9 +391,9 @@ openresty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 
 -----
 
-## ⚙️ 配置說明
+## ⚙️ 配置說明 | Configuration
 
-### 1\. 環境變數
+### 1\. 環境變數 | Environment Variables
 
 請確保 Nginx 運行環境中包含以下變數（推薦在 `nginx.conf` 或 Docker `env` 中設置）：
 
@@ -280,7 +410,7 @@ UPTIME_KUMA_NODE_ID=nginx-node
 UPTIME_KUMA_NODE_HOST=127.0.0.1
 ```
 
-### 2\. Nginx 共享記憶體
+### 2\. Nginx 共享記憶體 | Nginx Shared Memory
 
 在 `nginx.conf` 的 `http` 區塊中定義 Lua 共享字典（節錄）：
 
@@ -297,26 +427,28 @@ http {
 }
 ```
 
-### 3\. 定時任務 (Timers)
+### 3\. 定時任務 | Timers
 
-Lua 腳本中預設的定時器間隔：
+Lua 腳本中預設的定時器間隔 | Default timer intervals in Lua scripts:
 
-  * **負載更新**: `30s`
-  * **故障掃描**: `10s`
-  * **心跳發送**: `60s`
-  * **故障轉移檢查**: `60s`
+| 任務 Task | 間隔 Interval |
+| :--- | :--- |
+| 負載更新 Load Update | `30s` |
+| 故障掃描 Fault Scan | `10s` |
+| 心跳發送 Heartbeat | `60s` |
+| 故障轉移檢查 Failover Check | `60s` |
 
 -----
 
-## 🚀 部署指南
+## 🚀 部署指南 | Deployment Guide
 
-### 前置需求
+### 前置需求 | Prerequisites
 
-  * **Nginx OpenResty** (建議版本 1.19+)
-  * **MariaDB/MySQL** (Uptime Kuma 的數據存儲)
-  * **Uptime Kuma** (已配置為多節點模式運行)
+- **Nginx OpenResty** (建議版本 1.19+ | Recommended version 1.19+)
+- **MariaDB/MySQL** (Uptime Kuma 資料存儲 | Data storage for Uptime Kuma)
+- **Uptime Kuma** (已配置多節點模式 | Configured for multi-node mode)
 
-### 步驟 1: 部署 Lua 腳本
+### 步驟 1: 部署 Lua 腳本 | Step 1: Deploy Lua Scripts
 
 將 `lua` 資料夾中的腳本複製到 OpenResty 的庫目錄：
 
@@ -325,7 +457,7 @@ cp lua/load_balancer.lua /usr/local/openresty/lualib/
 cp lua/health_check.lua /usr/local/openresty/lualib/
 ```
 
-### 步驟 2: 配置 Nginx
+### 步驟 2: 配置 Nginx | Step 2: Configure Nginx
 
 複製並修改 `nginx.conf`：
 
@@ -348,7 +480,7 @@ upstream uptime_kuma_backend {
 }
 ```
 
-### 步驟 3: 啟動服務
+### 步驟 3: 啟動服務 | Step 3: Start Services
 
 ```bash
 # 檢查配置語法
@@ -364,52 +496,78 @@ curl http://localhost/api/system-status
 -----
 
 
-## 🧪 測試與工具
+## 🧪 測試與工具 | Testing & Tools
 
-- **OpenResty / API 功能測試（HTTP 檔案）**：
-  - `set-up.http`：
-    - 基本 Kuma API 測試（狀態、Monitors CRUD、狀態頁等）。
-    - OpenResty 健康檢查與負載平衡相關端點測試：`/health`、`/api/health-status`、`/api/trigger-health-check`、`/lb/health`、`/lb/capacity`、`/api/debug-config`、`/api/debug-logs`。
-    - 建議使用 VS Code REST Client / IntelliJ HTTP Client / Thunder Client 等工具直接開啟並執行。
+- **OpenResty / API 功能測試**：使用 `set-up.http` 檔案進行測試
+  > Use `set-up.http` file for testing
+- 支援工具 | Supported tools: VS Code REST Client, IntelliJ HTTP Client, Thunder Client
 
-## 📊 監控與維護
+## 📊 監控與維護 | Monitoring & Maintenance
 
 為了確保生產環境的穩定性，建議關注以下指標：
+> To ensure production stability, monitor the following:
 
-1.  **日誌監控**：
-      * `/usr/local/openresty/nginx/logs/error.log`: 關注 Lua 腳本報錯或資料庫連接錯誤。
-2.  **API 巡檢**：
-      * 定期調用 `/api/node-status` 確保沒有節點卡在 `recovering` 狀態過久。
-3.  **故障排查檢查清單**：
-      * 🔍 **資料庫連接**：Lua 腳本依賴直接寫入 DB 來轉移監控器，確保 DB 帳號權限正確。
-      * 🔍 **網絡延遲**：如果心跳頻繁超時，考慮增加 `timeout` 設定。
+1.  **日誌監控 | Log Monitoring**：
+    - `/usr/local/openresty/nginx/logs/error.log`: 關注 Lua 腳本報錯或資料庫連接錯誤
+    > Monitor for Lua script errors or database connection errors
+
+2.  **API 巡檢 | API Inspection**：
+    - 定期調用 `/api/node-status` 確保沒有節點卡在 `recovering` 狀態過久
+    > Regularly call `/api/node-status` to ensure no nodes are stuck in `recovering` status
+
+3.  **故障排查 | Troubleshooting**：
+    - 🔍 **資料庫連接**：確保 DB 帳號權限正確 | Ensure DB account permissions are correct
+    - 🔍 **網絡延遲**：如果心跳頻繁超時，考慮增加 `timeout` 設定 | If heartbeats frequently timeout, consider increasing `timeout` setting
 
 -----
 
-## 🔒 安全考量
+## 🔒 安全考量 | Security Considerations
+
+- **API 訪問控制**：建議透過 `allow/deny` 指令限制 `/api/` 路徑訪問
+  > Recommend restricting `/api/` path access via `allow/deny` directives
+- **資料庫憑證**：避免硬編碼密碼，始終使用 `os.getenv` 讀取環境變數
+  > Avoid hardcoding passwords, always use `os.getenv` to read environment variables
+- **固定節點功能**：此功能主要用於開發調試，生產環境請謹慎使用
+  > Fixed node feature is mainly for development debugging, use cautiously in production
+
 -----
 
-## ❓ 常見問題（FAQ）
+## ❓ 常見問題 | FAQ
 
 - **API 返回 502 / 504**：
-  - 檢查 `nginx/logs/error.log` 是否有 Lua 或資料庫連線錯誤。
-  - 確認 `DB_*` 環境變數已在容器或系統層正確設置。
+  - 檢查 `nginx/logs/error.log` 是否有 Lua 或資料庫連線錯誤
+  - 確認 `DB_*` 環境變數已正確設置
+  > Check `nginx/logs/error.log` for Lua or database connection errors. Verify `DB_*` environment variables are set correctly.
+
 - **節點反覆恢復/離線（Flapping）**：
-  - 調整健康檢查間隔或超時；檢查網路延遲與節點負載。
+  - 調整健康檢查間隔或超時；檢查網路延遲與節點負載
+  > Adjust health check interval or timeout; check network latency and node load.
+
 - **監控器分佈不均**：
-  - 使用 `/api/trigger-rebalancing` 或 `/api/force-rebalance-all` 進行再平衡。
+  - 使用 `/api/trigger-rebalancing` 或 `/api/force-rebalance-all` 進行再平衡
+  > Use `/api/trigger-rebalancing` or `/api/force-rebalance-all` for rebalancing.
+
+- **固定節點無效**：
+  - 檢查節點是否在線：訪問 `/lb/available-nodes`
+  - 清除 Cookie：訪問 `/clear-fixed-node`
+  > Check if node is online: visit `/lb/available-nodes`. Clear Cookie: visit `/clear-fixed-node`.
 
 -----
 
-## 📚 相關文件
+## 📚 相關文件 | Related Documents
 
-- `API_DOCUMENTATION.md`：完整 API 規範與示例。
-- `CLUSTER_DEPLOYMENT_GUIDE.md`：集群部署與操作指南。
-- `PUBLIC_STATUS_PAGINATION_PLAN.md`：公開狀態頁分頁計畫。
-- `SECURITY.md`、`CODE_OF_CONDUCT.md`、`CONTRIBUTING.md`：安全與貢獻規範。
+| 文件 Document | 說明 Description |
+| :--- | :--- |
+| `API_DOCUMENTATION.md` | 完整 API 規範與示例 / Complete API specification and examples |
+| `CLUSTER_DEPLOYMENT_GUIDE.md` | 集群部署與操作指南 / Cluster deployment and operation guide |
+| `PUBLIC_STATUS_PAGINATION_PLAN.md` | 公開狀態頁分頁計畫 / Public status page pagination plan |
+| `SECURITY.md` | 安全規範 / Security guidelines |
+| `CODE_OF_CONDUCT.md` | 行為準則 / Code of conduct |
+| `CONTRIBUTING.md` | 貢獻指南 / Contributing guide |
 
+-----
 
+## 📄 License
 
-  * **API 訪問控制**：目前的 API 接口未配置認證，建議在 Nginx 中透過 `allow/deny` 指令限制僅內網 IP 可訪問 `/api/` 路徑，或添加 Basic Auth。
-  * **資料庫憑證**：避免將密碼硬編碼在 Lua 腳本中，始終使用 `os.getenv` 讀取環境變數。
+MIT License - see [LICENSE](LICENSE) file for details.
 

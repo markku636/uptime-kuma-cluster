@@ -3,6 +3,8 @@ local cjson = require "cjson"
 
 -- 配置
 local MONITOR_LIMIT_PER_NODE = 1000
+local FIXED_NODE_COOKIE = "KUMA_FIXED_NODE"  -- Cookie 名稱
+
 local DB_CONFIG = {
     host = os.getenv("DB_HOST") or "mariadb",
     port = tonumber(os.getenv("DB_PORT")) or 3306,
@@ -233,6 +235,54 @@ function _M.get_node_capacity()
     }
 end
 
+-- ============================================================
+-- 固定節點路由功能 (Fixed Node Routing)
+-- ============================================================
+
+-- 檢查並解析固定節點 Cookie
+-- Check and parse fixed node Cookie
+function _M.get_fixed_node_from_cookie()
+    local cookie_value = ngx.var.cookie_KUMA_FIXED_NODE
+    
+    if not cookie_value or cookie_value == "" then
+        return nil
+    end
+    
+    -- 驗證格式 (node1, node2, node3...)
+    -- Validate format
+    if not string.match(cookie_value, "^node%d+$") then
+        ngx.log(ngx.WARN, "Invalid fixed node cookie value: ", cookie_value)
+        return nil
+    end
+    
+    return cookie_value
+end
+
+-- 驗證節點是否有效且在線
+-- Validate if node is valid and online
+function _M.validate_fixed_node(node_id)
+    local db, err = db_connect()
+    if not db then
+        return false, "database_unavailable"
+    end
+    
+    local sql = string.format([[
+        SELECT node_id, status 
+        FROM node 
+        WHERE node_id = '%s' AND status = 'online'
+        LIMIT 1
+    ]], node_id)
+    
+    local res, err = db:query(sql)
+    db:close()
+    
+    if not res or #res == 0 then
+        return false, "node_not_found_or_offline"
+    end
+    
+    return true, nil
+end
+
 -- 動態為當前請求選擇節點（提供給 balancer_by_lua_block 使用）
 -- 邏輯：依據各節點目前的 monitor 數量（active=1），優先選擇「監控數量最少」且 online 的節點
 -- 回傳值：host, port
@@ -323,10 +373,42 @@ end
 
 -- 預選節點（用於 access_by_lua* 階段，將結果存入 ngx.ctx）
 -- 這個函數必須在 access 階段調用，因為 balancer 階段不能使用 socket API
+-- Preselect node (for access_by_lua* phase, stores result in ngx.ctx)
+-- This function must be called in access phase because balancer phase cannot use socket API
 function _M.preselect_node()
-    local host, port = _M.pick_node_for_request()
+    local host, port
+    local use_fixed_node = false
+    
+    -- 1. 先檢查是否有固定節點 Cookie
+    -- First check if there's a fixed node Cookie
+    local fixed_node = _M.get_fixed_node_from_cookie()
+    
+    if fixed_node then
+        -- 驗證節點有效性
+        -- Validate node
+        local valid, reason = _M.validate_fixed_node(fixed_node)
+        
+        if valid then
+            host = "uptime-kuma-" .. fixed_node
+            port = 3001
+            use_fixed_node = true
+            ngx.log(ngx.INFO, "Using fixed node from cookie: ", fixed_node)
+        else
+            ngx.log(ngx.WARN, "Fixed node ", fixed_node, " is invalid (", tostring(reason), "), will clear cookie")
+            -- 標記需要清除 Cookie
+            -- Mark cookie for clearing
+            ngx.ctx.clear_fixed_node_cookie = true
+        end
+    end
+    
+    -- 2. 如果沒有有效的固定節點，使用原本邏輯
+    -- If no valid fixed node, use original logic
+    if not use_fixed_node then
+        host, port = _M.pick_node_for_request()
+    end
     
     -- 解析 hostname 為 IP 地址（balancer 階段需要）
+    -- Resolve hostname to IP (required by balancer phase)
     local ip, err = resolve_host(host)
     if not ip then
         ngx.log(ngx.WARN, "preselect_node: failed to resolve ", host, ", using fallback: ", err)
@@ -342,7 +424,9 @@ function _M.preselect_node()
     ngx.ctx.upstream_host = ip
     ngx.ctx.upstream_port = port
     ngx.ctx.upstream_hostname = host  -- 保留原始 hostname 用於日誌
-    ngx.log(ngx.INFO, "preselect_node: selected ", host, " (IP: ", tostring(ip), "):", port)
+    ngx.ctx.use_fixed_node = use_fixed_node  -- 標記是否使用固定節點
+    ngx.log(ngx.INFO, "preselect_node: selected ", host, " (IP: ", tostring(ip), "):", port, 
+            ", fixed_node=", tostring(use_fixed_node))
 end
 
 -- 獲取預選的節點（用於 balancer_by_lua* 階段）

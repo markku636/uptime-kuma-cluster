@@ -95,6 +95,14 @@ services:
         condition: service_healthy
     networks:
       - kuma-network
+    healthcheck:
+      # 檢查 node1 是否已完成初始化且有使用者存在
+      # Check if node1 has finished initialization AND has users (setup complete)
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/entry | grep -v 'setup' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   uptime-kuma-node2:
     build:
@@ -125,9 +133,15 @@ services:
       mariadb:
         condition: service_healthy
       uptime-kuma-node1:
-        condition: service_started
+        condition: service_healthy
     networks:
       - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   uptime-kuma-node3:
     build:
@@ -157,10 +171,16 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      uptime-kuma-node2:
-        condition: service_started
+      uptime-kuma-node1:
+        condition: service_healthy
     networks:
       - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   uptime-kuma-node4:
     build:
@@ -190,10 +210,16 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      uptime-kuma-node3:
-        condition: service_started
+      uptime-kuma-node1:
+        condition: service_healthy
     networks:
       - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   uptime-kuma-node5:
     build:
@@ -223,8 +249,14 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      uptime-kuma-node4:
-        condition: service_started
+      uptime-kuma-node1:
+        condition: service_healthy
     networks:
       - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 

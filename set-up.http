@@ -140,3 +140,36 @@ GET {{baseUrl}}/api/debug-config
 ### 取得 OpenResty 調試日誌（僅限內網/測試環境使用，避免生產環境暴露過多資訊）
 GET {{baseUrl}}/api/debug-logs
 
+### ---------------
+### 固定節點路由 | Fixed Node Routing
+### ---------------
+
+### 列出所有可用節點 | List available nodes
+GET {{baseUrl}}/lb/available-nodes
+
+### 查看當前固定節點狀態 | View fixed node status
+GET {{baseUrl}}/lb/fixed-node-status
+
+### 設定固定節點為 node1（瀏覽器訪問）| Set fixed node to node1 (browser)
+GET {{baseUrl}}/lb/fixed-node/node1
+
+### 設定固定節點為 node2（瀏覽器訪問）| Set fixed node to node2 (browser)
+GET {{baseUrl}}/lb/fixed-node/node2
+
+### 設定固定節點為 node3（瀏覽器訪問）| Set fixed node to node3 (browser)
+GET {{baseUrl}}/lb/fixed-node/node3
+
+### 清除固定節點（瀏覽器訪問）| Clear fixed node (browser)
+GET {{baseUrl}}/lb/clear-fixed-node
+
+### 透過 API 設定固定節點 | Set fixed node via API
+POST {{baseUrl}}/lb/set-fixed-node
+Content-Type: application/json
+
+{
+  "node": "node2",
+  "expires": 604800
+}
+
+### 透過 API 清除固定節點 | Clear fixed node via API
+POST {{baseUrl}}/lb/clear-fixed-node

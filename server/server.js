@@ -1849,9 +1849,28 @@ async function initDatabase(testMode = false) {
     }
 
     // If there is no record in user table, it is a new Uptime Kuma instance, need to setup
-    if ((await R.knex("user").count("id as count").first()).count === 0) {
-        log.info("server", "No user, need setup");
-        needSetup = true;
+    // For cluster mode: retry checking for users since another node might be doing setup
+    // 集群模式：重試檢查使用者，因為其他節點可能正在進行 setup
+    let userCount = (await R.knex("user").count("id as count").first()).count;
+    if (userCount === 0) {
+        log.info("server", "No user found, checking if another node is doing setup...");
+        
+        // Retry up to 30 times (5 minutes total) waiting for setup to complete on another node
+        // 重試最多 30 次（共 5 分鐘），等待其他節點完成 setup
+        for (let i = 0; i < 30 && userCount === 0; i++) {
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+            userCount = (await R.knex("user").count("id as count").first()).count;
+            if (userCount > 0) {
+                log.info("server", `User found after ${i + 1} retries, setup completed on another node`);
+                break;
+            }
+            log.info("server", `Still no user, retry ${i + 1}/30...`);
+        }
+        
+        if (userCount === 0) {
+            log.info("server", "No user after retries, need setup");
+            needSetup = true;
+        }
     }
 
     server.jwtSecret = jwtSecretBean.value;
