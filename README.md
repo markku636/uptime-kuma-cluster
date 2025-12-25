@@ -61,9 +61,9 @@ npm run dev
 > Open `set-up.http` with VS Code REST Client to test:
 
 ```http
-GET http://localhost/health              # OpenResty 健康狀態 | Health status
-GET http://localhost/lb/health           # 集群健康狀態 | Cluster health
-GET http://localhost/lb/available-nodes  # 可用節點列表 | Available nodes
+GET http://localhost:8084/health              # OpenResty 健康狀態 | Health status
+GET http://localhost:8084/lb/health           # 集群健康狀態 | Cluster health
+GET http://localhost:8084/lb/available-nodes  # 可用節點列表 | Available nodes
 ```
 
 -----
@@ -126,16 +126,16 @@ GET http://localhost/lb/available-nodes  # 可用節點列表 | Available nodes
 
 ```bash
 # 1. 查看可用節點 | View available nodes
-curl http://localhost/lb/available-nodes
+curl http://localhost:8084/lb/available-nodes
 
 # 2. 設定固定節點（瀏覽器直接訪問）| Set fixed node (visit in browser)
-# http://localhost/lb/fixed-node/node2
+# http://localhost:8084/lb/fixed-node/node2
 
 # 3. 驗證設定 | Verify setting
-curl http://localhost/lb/fixed-node-status
+curl http://localhost:8084/lb/fixed-node-status
 
 # 4. 清除設定（瀏覽器直接訪問）| Clear setting (visit in browser)
-# http://localhost/lb/clear-fixed-node
+# http://localhost:8084/lb/clear-fixed-node
 ```
 
 ### 🔧 API 操作 | API Operations
@@ -145,15 +145,15 @@ curl http://localhost/lb/fixed-node-status
 
 ```bash
 # 設定固定節點 | Set fixed node
-curl -X POST http://localhost/lb/set-fixed-node \
+curl -X POST http://localhost:8084/lb/set-fixed-node \
   -H "Content-Type: application/json" \
   -d '{"node": "node2", "expires": 604800}'
 
 # 清除固定節點 | Clear fixed node
-curl -X POST http://localhost/lb/clear-fixed-node
+curl -X POST http://localhost:8084/lb/clear-fixed-node
 
 # 查看狀態 | View status
-curl http://localhost/lb/fixed-node-status
+curl http://localhost:8084/lb/fixed-node-status
 ```
 
 ### 📊 Response 標頭 | Response Headers
@@ -172,11 +172,15 @@ curl http://localhost/lb/fixed-node-status
 - 預設有效期：7 天（可透過 API 自訂）
 - 若指定的節點離線，系統會自動清除 Cookie 並恢復負載均衡
 - 此功能主要用於開發調試，生產環境請謹慎使用
+- 檢查節點狀態：訪問 `/lb/available-nodes`
+- 清除設定：訪問 `/lb/clear-fixed-node`
 
 > - Cookie name: `KUMA_FIXED_NODE`
 > - Default expiry: 7 days (customizable via API)
 > - If the specified node goes offline, the system will automatically clear the Cookie and restore load balancing
 > - This feature is mainly for development debugging, use cautiously in production
+> - Check node status: visit `/lb/available-nodes`
+> - Clear setting: visit `/lb/clear-fixed-node`
 
 -----
 
@@ -274,7 +278,19 @@ OpenResty 的 `balancer_by_lua*` 階段運行在 Nginx 的連接建立過程中�
 
 ## 🔧 模組說明 | Module Description
 
-系統核心邏輯由兩個主要的 Lua 模組構成：
+系統經過重構，核心邏輯由以下 6 個 Lua 模組構成：
+
+### 模組架構 | Module Architecture
+
+```
+lua/
+├── config.lua         # 集中配置管理 (環境變數、預設值)
+├── db.lua             # 共用資料庫連接模組
+├── logger.lua         # 共用日誌模組 (統一格式、分類)
+├── middleware.lua     # 中介層 (access/header_filter 統一處理)
+├── health_check.lua   # 健康檢查與節點管理
+└── monitor_router.lua # 路由決策邏輯
+```
 
 ### 0\. `ngx` 是什麼？如何在 OpenResty 裡導頁 / 轉發請求
 
@@ -294,7 +310,72 @@ OpenResty 內建一個全域物件 `ngx`，提供：
 1. **Access 階段**：`access_by_lua_block` + `monitor_router.preselect_node()` 查詢 DB、解析 DNS、存入 `ngx.ctx`
 2. **Balancer 階段**：`balancer_by_lua_block` + `monitor_router.get_preselected_node()` 讀取 `ngx.ctx`、呼叫 `ngx.balancer.set_current_peer()`
 
-### 1\. 路由與負載平衡模組 (`monitor_router.lua`)
+### 1\. config.lua - 集中配置管理
+
+所有環境變數和預設值集中管理，避免硬編碼：
+
+```lua
+local config = require "config"
+
+-- 資料庫配置
+config.database.host      -- DB_HOST
+config.database.port      -- DB_PORT
+config.database.user      -- DB_USER
+config.database.password  -- DB_PASSWORD
+config.database.database  -- DB_NAME
+
+-- 集群配置
+config.cluster.node_count              -- CLUSTER_NODE_COUNT (預設: 3)
+config.cluster.monitor_limit_per_node  -- MONITOR_LIMIT_PER_NODE (預設: 1000)
+
+-- 健康檢查配置
+config.health_check.interval  -- HEALTH_CHECK_INTERVAL (預設: 30秒)
+config.health_check.timeout   -- HEALTH_CHECK_TIMEOUT (預設: 5000ms)
+```
+
+### 2\. db.lua - 共用資料庫模組
+
+統一的資料庫連接邏輯，消除重複代碼：
+
+```lua
+local db = require "db"
+
+-- 建立連接
+local conn, err = db.connect()
+
+-- 執行查詢並自動關閉
+local res, err = db.query("SELECT * FROM node")
+```
+
+### 3\. logger.lua - 共用日誌模組
+
+統一的日誌格式和分類：
+
+```lua
+local logger = require "logger"
+
+-- 分類日誌
+logger.health_check("Node 1 is online")
+logger.database("Query executed: %s", sql)
+logger.router("Selected node: %s", node_id)
+logger.debug("CATEGORY", "Debug info: %s", data)
+```
+
+### 4\. middleware.lua - 中介層模組
+
+統一處理 access 和 header_filter 階段，減少 nginx.conf 重複代碼：
+
+```lua
+local middleware = require "middleware"
+
+-- Access 階段：預選節點
+middleware.preselect_node()
+
+-- Header Filter 階段：添加路由標頭
+middleware.add_routing_headers()
+```
+
+### 5\. monitor_router.lua - 路由決策邏輯
 
 負責選擇要把請求轉發到哪個 Uptime Kuma 節點。
 
@@ -321,35 +402,29 @@ OpenResty 內建一個全域物件 `ngx`，提供：
 | `get_preselected_node()` | 【Balancer 階段】從 `ngx.ctx` 讀取 IP:Port |
 | `pick_node_for_request()` | 查詢最空閒的 online 節點 |
 | `resolve_host()` | 將 Docker 服務名解析為 IP |
+| `get_cluster_status()` | 取得集群狀態 |
+| `get_node_capacity()` | 取得節點容量 |
 
-#### 其他輔助函數
-
-- `route_by_monitor_id()` - 根據監控 ID 查固定節點
-- `get_cluster_status()` - 取得集群狀態（供 `/lb/health`）
-- `get_node_capacity()` - 取得節點容量（供 `/lb/capacity`）
-- `hash_route()` - DB 掛掉時的備援路由
-
-### 2\. 健康檢查模組 (`health_check.lua`)
+### 6\. health_check.lua - 健康檢查模組
 
 負責維護集群穩定性與故障處理。
 
-  * **核心職責**：
-      * **節點健康檢查**：定期對每個節點的 `/api/v1/health` 發出 HTTP 檢查。
-      * **故障檢測與轉移**：當節點連續多次檢查失敗時，標記為 `offline`，並呼叫 `redistribute_monitors_from_node()` 進行監控任務重新分配。
-      * **節點恢復**：節點恢復健康後，透過 `revert_monitors_to_node()` 將先前轉移的監控任務還原。
-  * **關鍵函數**：
-      * `run_health_check()`：單次健康檢查流程，會：
-        * 使用 `_M.get_all_nodes()` 查出所有節點與其 `host`、`status`。
-        * 對每個節點呼叫 `_M.check_node_health(host)`（透過 `resty.http` 發 HTTP 請求到各節點的 `/api/v1/health`）。
-        * 依結果更新 DB `node.status`（`online` / `offline`）、更新 `ngx.shared.health_checker` 裡的統計值與連續成功/失敗次數。
-        * 當某節點連續失敗達門檻時，呼叫 `redistribute_monitors_from_node(node_id)` 將該節點上的監控平均分配到其他線上節點。
-        * 當某節點連續成功達門檻時，呼叫 `revert_monitors_to_node(node_id)` 將先前轉移走的監控還原。
-      * `health_check_worker()`：在 `init_worker_by_lua_block` 中以無限迴圈方式週期性呼叫 `run_health_check()`，並使用 `ngx.sleep(interval)` 控制間隔。
-      * `get_statistics()`：從 `ngx.shared.health_checker` 中讀出 `check_count`、`last_check`、`success_count`、`fail_count` 等統計資訊，並透過 `/api/health-status` 暴露給外部。
-      * 其他輔助函式：
-        * `get_all_nodes()`：查詢 `node` 表取得所有節點的 `node_id`、`host`、`status`。
-        * `update_node_status(node_id, status, is_online)`：將節點狀態寫回 DB，並更新 `last_seen` 等欄位。
-        * `start_debugger()` / `get_debug_config()`：根據環境變數啟用 Emmy Lua Debugger，並提供 `/api/debug-config` 等除錯資訊。
+#### 核心職責
+
+- **節點健康檢查**：定期對每個節點的 `/api/v1/health` 發出 HTTP 檢查
+- **故障檢測與轉移**：當節點連續多次檢查失敗時，標記為 `offline` 並重新分配監控任務
+- **節點恢復**：節點恢復健康後，還原先前轉移的監控任務
+
+#### 關鍵函數
+
+| 函數 | 用途 |
+|:---|:---|
+| `run_health_check()` | 執行單次健康檢查流程 |
+| `health_check_worker()` | 週期性健康檢查背景工作 |
+| `redistribute_monitors_from_node()` | 故障轉移：重新分配監控任務 |
+| `revert_monitors_to_node()` | 節點恢復：還原監控任務 |
+| `get_all_nodes()` | 查詢所有節點狀態 |
+| `update_node_status()` | 更新節點狀態到資料庫 |
 
 -----
 
@@ -450,10 +525,16 @@ Lua 腳本中預設的定時器間隔 | Default timer intervals in Lua scripts:
 
 ### 步驟 1: 部署 Lua 腳本 | Step 1: Deploy Lua Scripts
 
-將 `lua` 資料夾中的腳本複製到 OpenResty 的庫目錄：
+將 `lua` 資料夾中的所有模組複製到 OpenResty 的庫目錄：
 
 ```bash
-cp lua/load_balancer.lua /usr/local/openresty/lualib/
+cp lua/*.lua /usr/local/openresty/lualib/
+# 或個別複製
+cp lua/config.lua /usr/local/openresty/lualib/
+cp lua/db.lua /usr/local/openresty/lualib/
+cp lua/logger.lua /usr/local/openresty/lualib/
+cp lua/middleware.lua /usr/local/openresty/lualib/
+cp lua/monitor_router.lua /usr/local/openresty/lualib/
 cp lua/health_check.lua /usr/local/openresty/lualib/
 ```
 
@@ -549,8 +630,8 @@ curl http://localhost/api/system-status
 
 - **固定節點無效**：
   - 檢查節點是否在線：訪問 `/lb/available-nodes`
-  - 清除 Cookie：訪問 `/clear-fixed-node`
-  > Check if node is online: visit `/lb/available-nodes`. Clear Cookie: visit `/clear-fixed-node`.
+  - 清除 Cookie：訪問 `/lb/clear-fixed-node`
+  > Check if node is online: visit `/lb/available-nodes`. Clear Cookie: visit `/lb/clear-fixed-node`.
 
 -----
 
