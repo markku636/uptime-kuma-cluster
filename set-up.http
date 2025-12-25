@@ -117,16 +117,17 @@ Authorization: {{apiKey}}
 
 ### ---------------
 ### OpenResty / 負載平衡 / 健康檢查相關測試
+### 注意：所有 OpenResty API 都統一放在 /lb/ 路徑下
 ### ---------------
 
-### 檢查 Nginx / OpenResty 本身健康狀態
-GET {{baseUrl}}/health
+### 快速檢查 Nginx / OpenResty 是否存活
+GET {{baseUrl}}/lb/ping
 
 ### 查詢 OpenResty 健康檢查統計資訊
-GET {{baseUrl}}/api/health-status
+GET {{baseUrl}}/lb/health-status
 
 ### 手動觸發一次健康檢查
-POST {{baseUrl}}/api/trigger-health-check
+POST {{baseUrl}}/lb/trigger-health-check
 
 ### 查詢集群節點狀態 (來自 DB node 表)
 GET {{baseUrl}}/lb/health
@@ -135,10 +136,29 @@ GET {{baseUrl}}/lb/health
 GET {{baseUrl}}/lb/capacity
 
 ### 取得目前健康檢查調試設定
-GET {{baseUrl}}/api/debug-config
+GET {{baseUrl}}/lb/debug-config
 
 ### 取得 OpenResty 調試日誌（僅限內網/測試環境使用，避免生產環境暴露過多資訊）
-GET {{baseUrl}}/api/debug-logs
+GET {{baseUrl}}/lb/debug-logs
+
+### (向後兼容) 舊 /health 路徑會重定向到 /lb/ping
+GET {{baseUrl}}/health
+
+### ---------------
+### 系統狀態 API | System Status APIs
+### ---------------
+
+### 綜合系統狀態（推薦）| System status (recommended)
+GET {{baseUrl}}/lb/system-status
+
+### 節點狀態 | Node status
+GET {{baseUrl}}/lb/node-status
+
+### 負載均衡狀態 | Load balancer status
+GET {{baseUrl}}/lb/load-balancer-status
+
+### 重新平衡狀態 | Rebalancing status
+GET {{baseUrl}}/lb/rebalancing-status
 
 ### ---------------
 ### 固定節點路由 | Fixed Node Routing

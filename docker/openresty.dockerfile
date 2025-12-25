@@ -59,7 +59,7 @@ ENV LUA_PATH="/usr/local/openresty/site/lualib/?.lua;/usr/local/openresty/lualib
 ENV LUA_CPATH="/usr/local/openresty/site/lualib/?.so;/usr/local/openresty/lualib/?.so;;"
 
 # 創建健康檢查腳本
-RUN echo '#!/bin/sh\ncurl -f http://localhost/health || exit 1' > /usr/local/bin/healthcheck.sh \
+RUN echo '#!/bin/sh\ncurl -f http://localhost/lb/ping || exit 1' > /usr/local/bin/healthcheck.sh \
     && chmod +x /usr/local/bin/healthcheck.sh
 
 # 預設啟動

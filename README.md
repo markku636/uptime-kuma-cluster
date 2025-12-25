@@ -80,9 +80,9 @@ npm run dev
 > Open `set-up.http` with VS Code REST Client to test:
 
 ```http
-GET http://localhost:8084/health              # OpenResty 健康狀態 | Health status
-GET http://localhost:8084/lb/health           # 集群健康狀態 | Cluster health
-GET http://localhost:8084/lb/available-nodes  # 可用節點列表 | Available nodes
+GET http://localhost:8084/lb/ping               # OpenResty 存活檢查 | LB alive check
+GET http://localhost:8084/lb/health             # 集群健康狀態 | Cluster health
+GET http://localhost:8084/lb/available-nodes    # 可用節點列表 | Available nodes
 ```
 
 -----
@@ -122,7 +122,7 @@ GET http://localhost:8084/lb/available-nodes  # 可用節點列表 | Available n
 ```bash
 curl http://localhost:8084/lb/health            # 集群健康概況
 curl http://localhost:8084/lb/available-nodes   # 每個節點的狀態與監控數
-curl http://localhost:8084/api/load-balancer-status
+curl http://localhost:8084/lb/load-balancer-status
 ```
 
 > 想看更細的實作細節，可往下閱讀「🏗️ 架構設計」與「🔧 模組說明」。
@@ -148,17 +148,17 @@ http://localhost:8084/lb/clear-fixed-node
 
 ### 3️⃣ 使用 RESTful API | Using RESTful API
 
-OpenResty 直接提供一組 JSON API，方便從腳本或其他系統整合：
+OpenResty 直接提供一組 JSON API（統一在 `/lb/` 路徑下），方便從腳本或其他系統整合：
 
 ```bash
 # 綜合系統狀態（建議優先看這個）
-curl http://localhost:8084/api/system-status
+curl http://localhost:8084/lb/system-status
 
 # 看每個 Uptime Kuma 節點目前狀態
-curl http://localhost:8084/api/node-status
+curl http://localhost:8084/lb/node-status
 
 # 手動觸發一次重新平衡
-curl http://localhost:8084/api/trigger-rebalancing
+curl http://localhost:8084/lb/trigger-rebalancing
 ```
 
 - 完整路由與說明請參考下方「🌐 API 接口」章節。
@@ -189,8 +189,8 @@ curl http://localhost:8084/api/trigger-rebalancing
 相關實作主要在 `lua/health_check.lua`，也可以透過：
 
 ```bash
-curl http://localhost:8084/api/health-check-status
-curl http://localhost:8084/api/rebalancing-status
+curl http://localhost:8084/lb/health-status
+curl http://localhost:8084/lb/rebalancing-status
 ```
 
 來觀察目前健康檢查與重新平衡的狀態。
@@ -530,12 +530,14 @@ OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
-| `GET` | `/health` | 返回 Nginx 負載平衡器本身的健康狀態與時間戳。 |
-| `GET` | `/api/system-status` | **推薦**：返回所有模組的綜合狀態資訊（包含節點、負載、故障檢測）。 |
-| `GET` | `/api/node-status` | 返回所有後端節點的詳細狀態（Online/Offline/Recovering）。 |
-| `GET` | `/api/load-balancer-status` | 查看節點負載分數、最後更新時間。 |
-| `GET` | `/api/health-check-status` | 查看心跳統計、故障轉移歷史記錄。 |
-| `GET` | `/api/fault-detection-status` | 查看故障檢測掃描器的運行統計。 |
+| `GET` | `/lb/ping` | 快速檢查 Nginx 負載平衡器是否存活。 |
+| `GET` | `/lb/health` | 返回集群節點的健康狀態 (從 DB 查詢)。 |
+| `GET` | `/lb/health-status` | 查看心跳統計、故障轉移歷史記錄。 |
+| `GET` | `/lb/capacity` | 返回每個節點的監控器數量與容量。 |
+| `GET` | `/lb/system-status` | **推薦**：返回所有模組的綜合狀態資訊。 |
+| `GET` | `/lb/node-status` | 返回所有後端節點的詳細狀態 (Online/Offline/Recovering)。 |
+| `GET` | `/lb/load-balancer-status` | 查看節點負載分數、最後更新時間。 |
+| `GET` | `/lb/fault-detection-status` | 查看故障檢測掃描器的運行統計。 |
 
 ### 🎯 固定節點路由 | Fixed Node Routing
 
@@ -552,10 +554,13 @@ OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
-| `GET` | `/api/update-loads` | 手動強制更新負載資訊。 |
-| `GET` | `/api/trigger-rebalancing` | 手動觸發一次監控器重新平衡。 |
-| `GET` | `/api/force-rebalance-all` | **危險**：強制重新分配所有監控器（用於集群嚴重不平衡時）。 |
-| `GET` | `/api/rebalancing-status` | 查看當前重新平衡操作的進度與統計。 |
+| `POST` | `/lb/trigger-health-check` | 手動觸發一次健康檢查。 |
+| `GET` | `/lb/update-loads` | 手動強制更新負載資訊。 |
+| `GET` | `/lb/trigger-rebalancing` | 手動觸發一次監控器重新平衡。 |
+| `GET` | `/lb/force-rebalance-all` | **危險**：強制重新分配所有監控器。 |
+| `GET` | `/lb/rebalancing-status` | 查看當前重新平衡操作的進度與統計。 |
+| `GET` | `/lb/debug-config` | 查看健康檢查調試設定。 |
+| `GET` | `/lb/debug-logs` | 查看 OpenResty 調試日誌。 |
 
 -----
 
