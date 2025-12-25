@@ -9,7 +9,7 @@
 
 **高可用 Uptime Kuma 集群解決方案 | High-Availability Uptime Kuma Cluster Solution**
 
-[快速開始 Quick Start](#-快速開始quick-start) • [功能特性 Features](#-功能特性features) • [API 文件 API Docs](#-api-接口api-endpoints) • [部署指南 Deployment](#-部署指南deployment-guide)
+[快速開始 Quick Start](#-快速開始quick-start) • [擴充功能 Extended Features](#-擴充功能一覽-extended-features) • [API 文件 API Docs](#-api-接口api-endpoints) • [部署指南 Deployment](#-部署指南deployment-guide)
 
 </div>
 
@@ -22,6 +22,25 @@
 > This project is an intelligent load balancing and health check system based on **Nginx OpenResty**, designed for multi-node cluster deployment of **Uptime Kuma**. The system implements application-level logic through Lua scripts, featuring automatic fault detection, failover, intelligent load distribution, and monitor task rebalancing to ensure high availability (HA) of monitoring services.
 
 📖 部落格詳解（架構與實作心法）| Blog Post: https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/
+
+-----
+
+## ✨ 擴充功能一覽 | Extended Features
+
+這個專案在原生 Uptime Kuma 之上，額外提供：
+
+- **多節點高可用集群 | Multi-node HA cluster**：一組 OpenResty + 多個 Uptime Kuma 節點，共用 MariaDB 資料庫。
+  > One OpenResty load balancer with multiple Uptime Kuma nodes sharing a MariaDB database.
+- **兩階段智慧負載平衡 | Two-phase smart load balancing**：依照每個節點目前的監控數與狀態，動態選擇最合適的節點處理請求。
+  > Picks the best node based on current monitor count and node status using a two-phase Lua routing design.
+- **自動容錯與監控轉移 | Automatic failover & monitor migration**：節點連續健康檢查失敗時，自動把該節點上的監控任務平均分配到其他健康節點，恢復後再搬回。
+  > Automatically redistributes monitors from failed nodes to healthy ones and restores them when the node recovers.
+- **固定節點路由（指定節點）| Fixed-node routing (pin to a node)**：支援透過 Cookie 將流量鎖定到指定節點，方便開發、壓測與除錯。
+  > Allows routing all traffic to a specific node via Cookie for development, load testing, or debugging.
+- **可觀測性 REST API | Observability REST APIs**：提供 `/api/system-status`、`/api/node-status`、`/lb/available-nodes` 等 API 供程式或外部系統查詢與操作。
+  > Exposes cluster status and operations through JSON APIs for scripting and integration.
+- **一鍵 Docker Compose 部署 | One-command Docker Compose deployment**：內建 `docker-compose-cluster.yaml`、OpenResty + Lua 設定與健康檢查腳本，快速啟動整個集群。
+  > Ships with a ready-to-use `docker-compose-cluster.yaml` and OpenResty configuration to spin up the whole cluster quickly.
 
 -----
 
@@ -68,27 +87,6 @@ GET http://localhost:8084/lb/available-nodes  # 可用節點列表 | Available n
 
 -----
 
-## ⚡ 功能特性 | Features
-
-| 特性 Feature | 描述 Description |
-| :--- | :--- |
-| **⚖️ 兩階段智能負載平衡** | 採用 access + balancer 兩階段架構：在 `access_by_lua` 階段完成 DB 查詢與 DNS 解析，在 `balancer_by_lua` 階段設置上游節點。 |
-| Two-Phase Smart Load Balancing | Uses access + balancer two-phase architecture: DB queries and DNS resolution in `access_by_lua`, upstream node selection in `balancer_by_lua`. |
-| **💓 主動健康檢查** | 系統每 **30 秒**對節點進行主動健康檢查，結果寫入資料庫 `node` 表。 |
-| Active Health Check | System performs active health checks on nodes every **30 seconds**, results written to database `node` table. |
-| **🔄 自動故障轉移** | 當檢測到節點故障（連續 3 次失敗）時，自動將該節點的監控任務轉移至其他健康節點。 |
-| Auto Failover | When node failure is detected (3 consecutive failures), automatically transfers monitoring tasks to other healthy nodes. |
-| **🛡️ 節點恢復管理** | 節點恢復健康後，自動還原先前轉移走的監控任務。 |
-| Node Recovery Management | After node recovers, automatically restores previously transferred monitoring tasks. |
-| **📊 節點容量查詢** | 透過 `/lb/capacity` API 查詢每個節點當前的監控數量與使用率。 |
-| Node Capacity Query | Query each node's current monitor count and utilization via `/lb/capacity` API. |
-| **🎯 固定節點路由（新功能）** | 透過 Cookie 將請求固定路由到指定節點，方便開發調試。 |
-| Fixed Node Routing (New) | Route requests to a specific node via Cookie, convenient for development and debugging. |
-| **🌐 Docker DNS 整合** | 使用 Docker 內建 DNS (127.0.0.11) 解析服務名為 IP。 |
-| Docker DNS Integration | Uses Docker built-in DNS (127.0.0.11) to resolve service names to IP. |
-
------
-
 ## 📦 目錄導覽 | Directory Structure
 
 | 目錄/檔案 | 說明 Description |
@@ -101,6 +99,101 @@ GET http://localhost:8084/lb/available-nodes  # 可用節點列表 | Available n
 | `extra/` | 輔助工具與腳本 |
 | `public/`, `src/` | 前端資源與程式碼 |
 | `API_DOCUMENTATION.md` | HTTP API 詳細說明與使用範例 |
+
+-----
+
+## 📘 使用導覽 | Usage Guide
+
+這一節用「從使用者角度」的順序，快速帶過最常用的幾個功能：
+
+1. 負載平衡機制 👉 請求會怎麼被分配到各節點？
+2. 指定節點 👉 開發或除錯時，如何把流量固定到某個節點？
+3. 使用 RESTful API 👉 有哪些常用的 JSON API 可以查狀態、手動操作？
+4. `.http` 測試 👉 怎麼用 VS Code 一鍵測試環境是否 OK？
+5. 容錯移轉機制 👉 節點掛掉時，監控怎麼被自動移轉？
+
+### 1️⃣ 負載平衡機制 | Load Balancing
+
+- 所有進入 OpenResty 的請求，會先經過 Lua **兩階段路由**：
+  - Access 階段：查 DB、算每個節點的當前監控數，選出最空閒的節點。
+  - Balancer 階段：把這個節點的 IP:Port 設成實際 upstream 目標。
+- 快速檢查目前整體狀態：
+
+```bash
+curl http://localhost:8084/lb/health            # 集群健康概況
+curl http://localhost:8084/lb/available-nodes   # 每個節點的狀態與監控數
+curl http://localhost:8084/api/load-balancer-status
+```
+
+> 想看更細的實作細節，可往下閱讀「🏗️ 架構設計」與「🔧 模組說明」。
+
+### 2️⃣ 指定節點 | Fixed Node Routing
+
+開發、壓測或除錯時，常常需要「只打某一台」。可以用固定節點路由：
+
+```bash
+# 將流量固定到 node1（瀏覽器可直接開）
+http://localhost:8084/lb/fixed-node/node1
+
+# 查看目前固定節點狀態
+curl http://localhost:8084/lb/fixed-node-status
+
+# 清除設定，恢復正常負載平衡
+http://localhost:8084/lb/clear-fixed-node
+```
+
+- 這個機制是透過 Cookie `KUMA_FIXED_NODE` 實作的。
+- 指定的節點離線時，系統會自動清掉 Cookie 並恢復負載平衡。
+- 下方「🎯 固定節點路由」章節有更完整的說明與 API 列表。
+
+### 3️⃣ 使用 RESTful API | Using RESTful API
+
+OpenResty 直接提供一組 JSON API，方便從腳本或其他系統整合：
+
+```bash
+# 綜合系統狀態（建議優先看這個）
+curl http://localhost:8084/api/system-status
+
+# 看每個 Uptime Kuma 節點目前狀態
+curl http://localhost:8084/api/node-status
+
+# 手動觸發一次重新平衡
+curl http://localhost:8084/api/trigger-rebalancing
+```
+
+- 完整路由與說明請參考下方「🌐 API 接口」章節。
+- 更細的欄位與回應格式，則在 `API_DOCUMENTATION.md` 中有詳細定義。
+
+### 4️⃣ `.http` 測試 | VS Code HTTP Tests
+
+專案根目錄提供了幾個 `.http` 檔，方便你用 VS Code REST Client 一鍵測試：
+
+- `set-up.http`：啟動後的基本健康檢查（health、cluster health、available nodes）。
+- `check-monitors.http`：範例查詢與操作監控的 API 呼叫。
+
+使用方式：
+
+1. 在 VS Code 中開啟 `.http` 檔案。
+2. 安裝 / 啟用「REST Client」擴充套件。
+3. 點選每一段上方的 `Send Request` 即可發送。
+
+### 5️⃣ 容錯移轉機制 | Failover & Recovery
+
+當某個 Uptime Kuma 節點掛掉時，系統會自動偵測並做「監控任務搬家」：
+
+- **主動健康檢查**：每 30 秒呼叫各節點的 `/api/v1/health`。
+- **故障判定**：連續多次檢查失敗，會把節點標記為 `offline`。
+- **自動故障轉移**：透過 `redistribute_monitors_from_node()`，將該節點上的監控平均分配到其他健康節點。
+- **節點恢復**：節點恢復 `online` 後，`revert_monitors_to_node()` 會把先前移走的監控逐步還原。
+
+相關實作主要在 `lua/health_check.lua`，也可以透過：
+
+```bash
+curl http://localhost:8084/api/health-check-status
+curl http://localhost:8084/api/rebalancing-status
+```
+
+來觀察目前健康檢查與重新平衡的狀態。
 
 -----
 
