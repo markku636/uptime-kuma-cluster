@@ -2,7 +2,7 @@
 
 ## 🎯 系統概述
 
-本專案是一個基於 **Nginx OpenResty** 的智能負載平衡和健康檢查系統，專為 **Uptime Kuma** 的多節點集群部署而設計。系統透過 Lua 腳本實現了應用層級的邏輯，具備自動故障檢測、故障轉移（Failover）、智能負載分配以及監控任務的重新平衡（Rebalancing）功能，確保監控服務的高可用性（HA）。
+本專案是一個基於 **Nginx OpenResty** 的智能負載平衡和健康檢查系統，專為 **Uptime Kuma** 的多節點集群部署而設計。系統透過 Lua 腳本實現了應用層級的邏輯，具備自動故障檢測、故障轉移（Failover）、智能負載分配以及監控任務的重新平衡（Rebalancing）功能，確保監控服務的高可用性（HA），並為了上架自動化，並擴充了restful api 的功能。
 
 - 部落格詳解（架構與實作心法）：https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/
 
@@ -27,7 +27,7 @@ docker ps
   - 後端（Node）：`node start-server.js`
   - 前端（Vite）：`npm run dev`
 
-- **REST Client 測試（`set-up.http`）**：
+- **REST Client API 設定 / 測試（`set-up.http`）**：
   - 在 VS Code 安裝「REST Client」擴充套件。
   - 開啟 `set-up.http`，點擊各段落的 `Send Request` 測試以下端點：
     - `GET http://localhost/health`（OpenResty 健康）
