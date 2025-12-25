@@ -1,180 +1,233 @@
-# Lua 调试库使用说明
+# Lua 模組說明
 
 ## 概述
 
-`debug_helper.lua` 是一个可重用的Lua调试库，它封装了 emmy_core 调试器的常用功能，提供了简单易用的API接口。
+本目錄包含 OpenResty 用於 Uptime Kuma Cluster 的 Lua 模組，提供負載平衡、健康檢查、路由決策等核心功能。
 
-## 文件结构
+## 檔案結構
 
-- `debug_helper.lua` - 主要的调试库文件
-- `debug_example.lua` - 使用示例文件
-- `README.md` - 本说明文档
-
-## 基本用法
-
-### 1. 引入调试库
-
-```lua
-local debug_helper = require("debug_helper")
+```
+lua/
+├── config.lua         # 集中配置管理
+├── db.lua             # 共用資料庫連接模組
+├── logger.lua         # 共用日誌模組
+├── middleware.lua     # 中介層 (access/header_filter)
+├── health_check.lua   # 健康檢查與節點管理
+├── monitor_router.lua # 路由決策邏輯
+└── README.md          # 本說明文檔
 ```
 
-### 2. 快速启动调试器
+## 模組說明
+
+### config.lua - 集中配置
+
+所有環境變數和預設值集中管理：
 
 ```lua
--- 使用默认配置启动调试器
-local success = debug_helper.quick_debug()
+local config = require "config"
+
+-- 資料庫配置
+config.database.host      -- DB_HOST (預設: mariadb)
+config.database.port      -- DB_PORT (預設: 3306)
+config.database.user      -- DB_USER (預設: kuma)
+config.database.password  -- DB_PASSWORD
+config.database.database  -- DB_NAME (預設: kuma)
+
+-- 集群配置
+config.cluster.node_count              -- CLUSTER_NODE_COUNT (預設: 3)
+config.cluster.monitor_limit_per_node  -- MONITOR_LIMIT_PER_NODE (預設: 1000)
+config.cluster.default_node            -- 預設節點 (node1)
+config.cluster.default_port            -- 預設端口 (3001)
+config.cluster.node_host_prefix        -- Docker 服務名稱前綴
+
+-- 健康檢查配置
+config.health_check.interval           -- HEALTH_CHECK_INTERVAL (預設: 30秒)
+config.health_check.timeout            -- HEALTH_CHECK_TIMEOUT (預設: 5000ms)
+
+-- 調試配置
+config.debug.enabled                   -- EMMY_DEBUG_ENABLED
+config.debug.host                      -- EMMY_DEBUG_HOST
+config.debug.port                      -- EMMY_DEBUG_PORT
 ```
 
-### 3. 自定义配置启动调试器
+### db.lua - 資料庫模組
+
+統一的資料庫連接邏輯：
 
 ```lua
--- 参数: host, port, wait_for_ide, set_breakpoint
-local success = debug_helper.init_debugger("127.0.0.1", 9967, true, false)
+local db = require "db"
+
+-- 建立連接
+local conn, err = db.connect()
+if conn then
+    local res = conn:query("SELECT * FROM node")
+    conn:close()
+end
+
+-- 執行查詢並自動關閉連接
+local res, err = db.query("SELECT * FROM monitor WHERE id = 1")
 ```
 
-## API 函数说明
+### logger.lua - 日誌模組
 
-### `init_debugger(host, port, wait_for_ide, set_breakpoint)`
-
-初始化并启动调试器。
-
-**参数:**
-- `host` (string, 可选): 监听主机地址，默认为 "0.0.0.0"
-- `port` (number, 可选): 监听端口，默认为 9966
-- `wait_for_ide` (boolean, 可选): 是否等待IDE连接，默认为 true
-- `set_breakpoint` (boolean, 可选): 是否设置断点，默认为 true
-
-**返回值:**
-- `boolean`: 调试器是否成功启动
-
-### `quick_debug()`
-
-使用默认配置快速启动调试器。
-
-**返回值:**
-- `boolean`: 调试器是否成功启动
-
-### `set_debug_enabled(enabled)`
-
-启用或禁用调试功能。
-
-**参数:**
-- `enabled` (boolean): 是否启用调试功能
-
-### `set_debug_config(config)`
-
-设置调试配置。
-
-**参数:**
-- `config` (table): 配置表，支持 host, port, enabled 字段
-
-### `get_debug_config()`
-
-获取当前调试配置。
-
-**返回值:**
-- `table`: 当前配置表
-
-### `is_debugger_available()`
-
-检查 emmy_core 模块是否可用。
-
-**返回值:**
-- `boolean`: 调试器模块是否可用
-
-### `safe_debug(callback)`
-
-安全执行调试回调函数，不会因为调试器不可用而报错。
-
-**参数:**
-- `callback` (function): 要执行的调试回调函数
-
-**返回值:**
-- `boolean`: 回调是否成功执行
-
-## 配置选项
-
-调试库支持以下配置选项：
+統一的日誌格式和分類：
 
 ```lua
-local DEBUG_CONFIG = {
-    host = "0.0.0.0",    -- 监听主机地址
-    port = 9966,         -- 监听端口
-    enabled = true       -- 是否启用调试功能
+local logger = require "logger"
+
+-- 調試日誌 (只在 debug 模式輸出)
+logger.debug("CATEGORY", "message %s", arg)
+
+-- 各級別日誌
+logger.info("SYSTEM", "服務啟動")
+logger.warn("NETWORK", "連接超時")
+logger.error("DATABASE", "查詢失敗: %s", err)
+
+-- 便捷方法 (自動帶類別的調試日誌)
+logger.health_check("檢查節點 %s", node_id)
+logger.database("查詢結果: %d 筆", count)
+logger.network("連接到 %s:%d", host, port)
+logger.system("工作器啟動")
+logger.router("路由到 %s", node)
+```
+
+支援的日誌類別：
+- `HEALTH_CHECK` 🔍 - 健康檢查
+- `DATABASE` 🗄️ - 資料庫操作
+- `NETWORK` 🌐 - 網路連接
+- `SYSTEM` ⚙️ - 系統資訊
+- `ROUTER` 🔀 - 路由決策
+- `DEBUG` 🐛 - 一般調試
+
+### middleware.lua - 中介層
+
+統一處理 nginx location 的共用邏輯：
+
+```lua
+-- 在 nginx.conf 中使用
+access_by_lua_block { require("middleware").preselect_node() }
+header_filter_by_lua_block { require("middleware").add_routing_headers() }
+```
+
+功能：
+- `preselect_node()` - Access 階段預選節點
+- `add_routing_headers()` - 添加 X-Routed-Via、X-Routed-To 標頭
+
+### health_check.lua - 健康檢查
+
+節點健康監控與故障轉移：
+
+```lua
+local health_check = require "health_check"
+
+-- 初始化
+health_check.init()
+
+-- 執行健康檢查
+health_check.run_health_check()
+
+-- 取得統計資訊
+local stats = health_check.get_statistics()
+
+-- 啟動健康檢查工作器 (背景執行)
+health_check.health_check_worker()
+```
+
+功能：
+- 定期檢查各節點健康狀態
+- 連續失敗 3 次自動將監控重新分配到其他節點
+- 節點恢復後自動還原監控
+
+### monitor_router.lua - 路由模組
+
+智能路由決策：
+
+```lua
+local router = require "monitor_router"
+
+-- 預選節點 (用於 access 階段)
+router.preselect_node()
+
+-- 取得預選結果 (用於 balancer 階段)
+local host, port = router.get_preselected_node()
+
+-- 根據 Monitor ID 路由
+local node = router.route_by_monitor_id(monitor_id)
+
+-- 取得集群狀態
+local status = router.get_cluster_status()
+
+-- 固定節點相關
+local fixed_node = router.get_fixed_node_from_cookie()
+local valid, reason = router.validate_fixed_node(node_id)
+```
+
+## 環境變數
+
+| 變數名 | 說明 | 預設值 |
+|--------|------|--------|
+| `DB_HOST` | 資料庫主機 | mariadb |
+| `DB_PORT` | 資料庫端口 | 3306 |
+| `DB_USER` | 資料庫用戶 | kuma |
+| `DB_PASSWORD` | 資料庫密碼 | kuma_pass |
+| `DB_NAME` | 資料庫名稱 | kuma |
+| `CLUSTER_NODE_COUNT` | 節點數量 | 3 |
+| `MONITOR_LIMIT_PER_NODE` | 每節點監控上限 | 1000 |
+| `HEALTH_CHECK_INTERVAL` | 健康檢查間隔(秒) | 30 |
+| `HEALTH_CHECK_TIMEOUT` | 健康檢查超時(ms) | 5000 |
+| `EMMY_DEBUG_ENABLED` | 啟用調試 | false |
+| `EMMY_DEBUG_HOST` | 調試器主機 | 0.0.0.0 |
+| `EMMY_DEBUG_PORT` | 調試器端口 | 9966 |
+
+## nginx.conf 使用範例
+
+```nginx
+# 在 location 中使用 middleware
+location / {
+    access_by_lua_block { require("middleware").preselect_node() }
+    header_filter_by_lua_block { require("middleware").add_routing_headers() }
+    
+    proxy_pass http://uptime_kuma_cluster;
+}
+
+# 管理端點
+location /lb/health {
+    content_by_lua_block {
+        local router = require "monitor_router"
+        ngx.say(require('cjson').encode(router.get_cluster_status()))
+    }
 }
 ```
 
-## 使用示例
+## 調試說明
 
-### 基本调试
+### 啟用調試模式
 
-```lua
-local debug_helper = require("debug_helper")
-
--- 启动调试器
-if debug_helper.quick_debug() then
-    print("调试器已启动")
-else
-    print("调试器启动失败")
-end
+設定環境變數：
+```bash
+EMMY_DEBUG_ENABLED=true
+EMMY_DEBUG_PORT=9966
 ```
 
-### 条件调试
+### 日誌類別
 
-```lua
-local debug_helper = require("debug_helper")
+健康檢查模組支援分類日誌：
+- `HEALTH_CHECK` - 健康檢查相關
+- `DATABASE` - 資料庫操作
+- `NETWORK` - 網路連接
+- `SYSTEM` - 系統資訊
 
--- 只在开发环境中启用调试
-if os.getenv("ENV") == "development" then
-    debug_helper.quick_debug()
-end
-```
+## 更新日誌
 
-### 自定义端口
+### v2.0.0 (2025-12-26)
+- 重構：新增 `config.lua` 集中配置管理
+- 重構：新增 `db.lua` 共用資料庫模組
+- 重構：新增 `middleware.lua` 統一中介層
+- 優化：nginx.conf 減少約 70 行重複代碼
+- 優化：配置修改只需改一處
 
-```lua
-local debug_helper = require("debug_helper")
-
--- 使用自定义端口启动调试器
-debug_helper.init_debugger("0.0.0.0", 9999, true, true)
-```
-
-### 安全调试
-
-```lua
-local debug_helper = require("debug_helper")
-
--- 安全地执行调试代码
-debug_helper.safe_debug(function()
-    -- 这里放置需要调试的代码
-    print("调试代码执行中...")
-end)
-```
-
-## 注意事项
-
-1. **依赖要求**: 需要安装 emmy_core 模块才能使用调试功能
-2. **错误处理**: 所有函数都使用 pcall 进行错误处理，不会因为调试器问题导致程序崩溃
-3. **配置持久性**: 配置更改在当前会话中有效，重启后恢复默认值
-4. **端口冲突**: 确保指定的端口没有被其他程序占用
-
-## 故障排除
-
-### 调试器无法启动
-
-1. 检查 emmy_core 模块是否正确安装
-2. 确认端口是否被占用
-3. 检查防火墙设置
-
-### IDE无法连接
-
-1. 确认调试器监听的IP地址和端口
-2. 检查网络连接
-3. 验证IDE的调试配置
-
-## 更新日志
-
-- v1.0.0: 初始版本，包含基本调试功能
-- 支持自定义配置
-- 提供安全调试接口
-- 完整的错误处理
+### v1.0.0
+- 初始版本
+- 基本健康檢查功能
+- Monitor 路由功能
+- 固定節點路由支援

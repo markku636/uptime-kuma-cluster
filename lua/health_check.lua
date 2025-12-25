@@ -1,96 +1,31 @@
 local _M = {}
+local config = require "config"
+local db = require "db"
+local logger = require "logger"
 
--- 資料庫連接配置
-local DB_CONFIG = {
-    host = os.getenv("DB_HOST") or "mariadb",
-    port = tonumber(os.getenv("DB_PORT")) or 3306,
-    user = os.getenv("DB_USER") or "kuma",
-    password = os.getenv("DB_PASSWORD") or "kuma_pass",
-    database = os.getenv("DB_NAME") or "kuma"
-}
-
--- 調試配置
-local DEBUG_CONFIG = {
-    enabled = os.getenv("EMMY_DEBUG_ENABLED") == "true",
-    host = os.getenv("EMMY_DEBUG_HOST") or "0.0.0.0",
-    port = tonumber(os.getenv("EMMY_DEBUG_PORT")) or 9966,
-    log_level = os.getenv("DEBUG_LOG_LEVEL") or "INFO"
-}
-
--- 健康檢查配置
+-- 使用集中配置
+local DEBUG_CONFIG = config.debug
 local HEALTH_CHECK_CONFIG = {
-    -- 被視為健康狀態的 HTTP 狀態碼
     healthy_status_codes = {
         [200] = "OK",
         [429] = "Rate Limited - 請求頻率限制，但服務器健康"
     },
-    -- 健康檢查超時時間（毫秒）
-    timeout = tonumber(os.getenv("HEALTH_CHECK_TIMEOUT")) or 5000,
-    -- 健康檢查間隔（秒）
-    interval = tonumber(os.getenv("HEALTH_CHECK_INTERVAL")) or 30
+    timeout = config.health_check.timeout,
+    interval = config.health_check.interval
 }
 
--- 調試日誌分類函數
-local function debug_log(category, level, message, ...)
-    if not DEBUG_CONFIG.enabled then
-        return
-    end
-    
-    local formatted_message = string.format(message, ...)
-    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-    
-    -- 根據類別選擇不同的日誌格式
-    if category == "HEALTH_CHECK" then
-        ngx.log(ngx.DEBUG, "🔍 [HEALTH_CHECK] ", formatted_message)
-    elseif category == "DATABASE" then
-        ngx.log(ngx.DEBUG, "🗄️ [DATABASE] ", formatted_message)
-    elseif category == "NETWORK" then
-        ngx.log(ngx.DEBUG, "🌐 [NETWORK] ", formatted_message)
-    elseif category == "SYSTEM" then
-        ngx.log(ngx.DEBUG, "⚙️ [SYSTEM] ", formatted_message)
-    else
-        ngx.log(ngx.DEBUG, "🔍 [DEBUG] ", formatted_message)
-    end
-end
-
--- 健康檢查調試日誌
-local function health_check_debug_log(message, ...)
-    debug_log("HEALTH_CHECK", "DEBUG", message, ...)
-end
-
--- 資料庫調試日誌
-local function database_debug_log(message, ...)
-    debug_log("DATABASE", "DEBUG", message, ...)
-end
-
--- 網路調試日誌
-local function network_debug_log(message, ...)
-    debug_log("NETWORK", "DEBUG", message, ...)
-end
-
--- 系統調試日誌
-local function system_debug_log(message, ...)
-    debug_log("SYSTEM", "DEBUG", message, ...)
-end
+-- 使用共用 logger (向後兼容的別名)
+local health_check_debug_log = logger.health_check
+local database_debug_log = logger.database
+local network_debug_log = logger.network
+local system_debug_log = logger.system
 
 -- 共享記憶體區域
 local health_checker = ngx.shared.health_checker
 
--- 連接資料庫輔助函式
+-- 使用共用資料庫模組
 local function db_connect()
-    local mysql = require "resty.mysql"
-    local db, err = mysql:new()
-    if not db then
-        ngx.log(ngx.ERR, "Failed to create MySQL connection: ", err)
-        return nil, err
-    end
-    db:set_timeout(5000)
-    local ok, err = db:connect(DB_CONFIG)
-    if not ok then
-        ngx.log(ngx.ERR, "Failed to connect to database: ", err)
-        return nil, err
-    end
-    return db
+    return db.connect()
 end
 
 -- 取得線上節點（排除指定節點）

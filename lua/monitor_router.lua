@@ -1,36 +1,18 @@
 local _M = {}
 local cjson = require "cjson"
+local config = require "config"
+local db = require "db"
 
--- 配置
-local MONITOR_LIMIT_PER_NODE = 1000
-local FIXED_NODE_COOKIE = "KUMA_FIXED_NODE"  -- Cookie 名稱
-
-local DB_CONFIG = {
-    host = os.getenv("DB_HOST") or "mariadb",
-    port = tonumber(os.getenv("DB_PORT")) or 3306,
-    user = os.getenv("DB_USER") or "kuma",
-    password = os.getenv("DB_PASSWORD") or "kuma_pass",
-    database = os.getenv("DB_NAME") or "kuma"
-}
+-- 使用集中配置
+local MONITOR_LIMIT_PER_NODE = config.cluster.monitor_limit_per_node
+local FIXED_NODE_COOKIE = config.cookie.fixed_node_name
 
 -- 共享記憶體
 local routing_cache = ngx.shared.monitor_routing
 
--- 資料庫連接
+-- 使用共用資料庫模組
 local function db_connect()
-    local mysql = require "resty.mysql"
-    local db, err = mysql:new()
-    if not db then
-        ngx.log(ngx.ERR, "Failed to create MySQL connection: ", err)
-        return nil, err
-    end
-    db:set_timeout(3000)
-    local ok, err = db:connect(DB_CONFIG)
-    if not ok then
-        ngx.log(ngx.ERR, "Failed to connect to database: ", err)
-        return nil, err
-    end
-    return db
+    return db.connect()
 end
 
 -- 根據 Monitor ID 路由
@@ -78,8 +60,8 @@ function _M.route_by_monitor_id(monitor_id)
         return _M.hash_route(monitor_id)
     end
 
-    -- 緩存結果（5分鐘）
-    routing_cache:set(cache_key, node_id, 300)
+    -- 緩存結果（使用配置的 TTL）
+    routing_cache:set(cache_key, node_id, config.cache.monitor_routing_ttl)
     
     ngx.log(ngx.INFO, "Routed monitor ", monitor_id, " to node ", node_id)
     return node_id
@@ -87,7 +69,7 @@ end
 
 -- 哈希路由（降級方案）
 function _M.hash_route(monitor_id)
-    local node_count = 3  -- 假設有3個節點
+    local node_count = config.cluster.node_count
     local node_index = (tonumber(monitor_id) % node_count) + 1
     return "node" .. node_index
 end
@@ -167,7 +149,7 @@ function _M.route_by_user(user_id)
     end
     
     -- 使用一致性哈希
-    local node_count = 3
+    local node_count = config.cluster.node_count
     local hash = ngx.crc32_short(user_id)
     local node_index = (hash % node_count) + 1
     return "node" .. node_index
@@ -287,10 +269,10 @@ end
 -- 邏輯：依據各節點目前的 monitor 數量（active=1），優先選擇「監控數量最少」且 online 的節點
 -- 回傳值：host, port
 function _M.pick_node_for_request()
-    local db, err = db_connect()
-    if not db then
-        ngx.log(ngx.ERR, "pick_node_for_request: cannot connect to DB, fallback to node1")
-        return "uptime-kuma-node1", 3001
+    local db_conn, err = db_connect()
+    if not db_conn then
+        ngx.log(ngx.ERR, "pick_node_for_request: cannot connect to DB, fallback to ", config.cluster.default_node)
+        return config.cluster.node_host_prefix .. config.cluster.default_node, config.cluster.default_port
     end
 
     -- 依據目前 active monitor 數量選擇最空閒的 online 節點
@@ -312,21 +294,21 @@ function _M.pick_node_for_request()
         LIMIT 1
     ]]
 
-    local res, qerr = db:query(sql)
-    db:close()
+    local res, qerr = db_conn:query(sql)
+    db_conn:close()
 
     if not res or #res == 0 then
-        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes with capacity found, fallback to node1")
-        return "uptime-kuma-node1", 3001
+        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes with capacity found, fallback to ", config.cluster.default_node)
+        return config.cluster.node_host_prefix .. config.cluster.default_node, config.cluster.default_port
     end
 
     local row = res[1]
-    local node_id = row.node_id or "node1"
+    local node_id = row.node_id or config.cluster.default_node
     local monitor_count = tonumber(row.monitor_count) or 0
 
-    -- node_id 例如 "node2" -> 映射到 Docker 服務名稱 "uptime-kuma-node2"
-    local host = "uptime-kuma-" .. node_id
-    local port = 3001
+    -- node_id 例如 "node2" -> 映射到 Docker 服務名稱
+    local host = config.cluster.node_host_prefix .. node_id
+    local port = config.cluster.default_port
 
     ngx.log(ngx.INFO,
         "pick_node_for_request: routed to ", host, ":", port,
@@ -389,8 +371,8 @@ function _M.preselect_node()
         local valid, reason = _M.validate_fixed_node(fixed_node)
         
         if valid then
-            host = "uptime-kuma-" .. fixed_node
-            port = 3001
+            host = config.cluster.node_host_prefix .. fixed_node
+            port = config.cluster.default_port
             use_fixed_node = true
             ngx.log(ngx.INFO, "Using fixed node from cookie: ", fixed_node)
         else
@@ -412,8 +394,9 @@ function _M.preselect_node()
     local ip, err = resolve_host(host)
     if not ip then
         ngx.log(ngx.WARN, "preselect_node: failed to resolve ", host, ", using fallback: ", err)
-        -- fallback: 嘗試解析 node1
-        ip, err = resolve_host("uptime-kuma-node1")
+        -- fallback: 嘗試解析默認節點
+        local fallback_host = config.cluster.node_host_prefix .. config.cluster.default_node
+        ip, err = resolve_host(fallback_host)
         if not ip then
             ngx.log(ngx.ERR, "preselect_node: failed to resolve fallback node1: ", err)
             -- 最後手段：使用硬編碼的容器 IP（不推薦）

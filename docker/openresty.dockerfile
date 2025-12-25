@@ -35,8 +35,13 @@ RUN mkdir -p /usr/local/openresty/nginx/lua \
     && mkdir -p /usr/local/openresty/nginx/logs \
     && mkdir -p /usr/local/openresty/nginx/conf/conf.d
 
-# === 複製 Lua 健康檢查模組到容器中 ===
+# === 複製 Lua 模組到容器中 ===
+COPY lua/config.lua /usr/local/openresty/nginx/lua/config.lua
+COPY lua/db.lua /usr/local/openresty/nginx/lua/db.lua
+COPY lua/logger.lua /usr/local/openresty/nginx/lua/logger.lua
+COPY lua/middleware.lua /usr/local/openresty/nginx/lua/middleware.lua
 COPY lua/health_check.lua /usr/local/openresty/nginx/lua/health_check.lua
+COPY lua/monitor_router.lua /usr/local/openresty/nginx/lua/monitor_router.lua
 
 # === 下載並編譯 emmy_core.so (Lua 偵錯器) ===
 WORKDIR /tmp

@@ -88,7 +88,6 @@ services:
       UPTIME_KUMA_NODE_ID: "node1"
       UPTIME_KUMA_NODE_NAME: "node1"
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
-      UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
     depends_on:
       mariadb:
