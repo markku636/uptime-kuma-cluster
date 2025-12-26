@@ -9,9 +9,15 @@
                 <!-- Node Display Toggle - Moved to header-top for better visibility -->
                 <div v-if="$root.info && $root.info.currentNodeId" class="node-toggle-section">
                     <div class="node-filter-indicator">
-                        <small class="text-muted">                            
-                            {{ $t("Node") }}: {{ showAllNodes ? $t("All Nodes") : $root.info.currentNodeId }}
-                        </small>
+                        <button
+                            type="button"
+                            class="btn btn-link btn-sm node-switch-trigger"
+                            @click="openNodeSwitchDialog"
+                        >
+                            <small class="text-muted">                            
+                                {{ $t("Node") }}: {{ showAllNodes ? $t("All Nodes") : $root.info.currentNodeId }}
+                            </small>
+                        </button>
                     </div>
                     
                     <div class="form-check form-switch node-toggle">
@@ -112,6 +118,69 @@
     <Confirm ref="confirmPause" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="pauseSelected">
         {{ $t("pauseMonitorMsg") }}
     </Confirm>
+
+    <!-- OpenResty Fixed Node Switcher -->
+    <div v-if="showNodeSwitchDialog" class="node-switch-backdrop" @click.self="closeNodeSwitchDialog">
+        <div class="node-switch-modal">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Node</h5>
+                <button type="button" class="btn-close" aria-label="Close" @click="closeNodeSwitchDialog"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2 small text-muted">
+                    Choose which backend node OpenResty should route you to.
+                </p>
+
+                <div v-if="lbLoading" class="text-center py-3">
+                    <span>{{ $t("Loading") }}...</span>
+                </div>
+
+                <div v-else>
+                    <div v-if="lbError" class="alert alert-danger py-2 px-3 small">
+                        {{ lbError }}
+                    </div>
+
+                    <div v-if="lbNodes && lbNodes.length > 0">
+                        <button
+                            v-for="node in lbNodes"
+                            :key="node.node_id"
+                            type="button"
+                            class="btn w-100 mb-2 node-option-btn"
+                            :class="getNodeButtonClass(node)"
+                            @click="switchToNode(node.node_id)"
+                        >
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ node.node_id }}</strong>
+                                    <span
+                                        v-if="lbStatus && lbStatus.current_node === node.node_id"
+                                        class="badge bg-light text-dark ms-2"
+                                    >
+                                        Current
+                                    </span>
+                                </div>
+                                <small class="text-muted">
+                                    Monitors: {{ node.monitor_count }}
+                                </small>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div v-else-if="!lbError" class="text-muted small">
+                        No nodes available from load balancer.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" @click="clearFixedNode">
+                    Use Load Balancer (auto)
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" @click="closeNodeSwitchDialog">
+                    {{ $t("Cancel") }}
+                </button>
+            </div>
+        </div>
+    </div>
 </template>
 
 <script>
@@ -147,7 +216,13 @@ export default {
             },
             showAllNodes: false,
             monitorCount: 0,
-            originalMonitorList: null
+            originalMonitorList: null,
+            // OpenResty fixed-node switcher state
+            showNodeSwitchDialog: false,
+            lbNodes: [],
+            lbStatus: null,
+            lbLoading: false,
+            lbError: null
         };
     },
     computed: {
@@ -506,6 +581,136 @@ export default {
                 this.monitorCount = Object.keys(this.$root.monitorList).length;
             }
         },
+
+        /**
+         * Open the OpenResty fixed-node switch dialog
+         */
+        openNodeSwitchDialog() {
+            this.showNodeSwitchDialog = true;
+            this.lbError = null;
+            this.lbLoading = true;
+
+            Promise.all([
+                fetch("/lb/available-nodes", {
+                    credentials: "same-origin",
+                }).then((res) => {
+                    if (!res.ok) {
+                        throw new Error("Failed to load available nodes");
+                    }
+                    return res.json();
+                }),
+                fetch("/lb/fixed-node-status", {
+                    credentials: "same-origin",
+                }).then((res) => {
+                    if (!res.ok) {
+                        throw new Error("Failed to load fixed node status");
+                    }
+                    return res.json();
+                }),
+            ]).then(([nodesRes, statusRes]) => {
+                this.lbNodes = nodesRes.available_nodes || [];
+                this.lbStatus = statusRes || null;
+            }).catch((err) => {
+                console.error(err);
+                this.lbError = err.message || "Failed to load load balancer status";
+            }).finally(() => {
+                this.lbLoading = false;
+            });
+        },
+
+        /**
+         * Close the node switch dialog
+         */
+        closeNodeSwitchDialog() {
+            if (this.lbLoading) {
+                return;
+            }
+            this.showNodeSwitchDialog = false;
+        },
+
+        /**
+         * Get button class for a node option
+         * @param {object} node
+         * @returns {string}
+         */
+        getNodeButtonClass(node) {
+            const isCurrent = this.lbStatus && this.lbStatus.current_node === node.node_id;
+            return isCurrent ? "btn-primary" : "btn-outline-primary";
+        },
+
+        /**
+         * Switch OpenResty fixed node via /lb/set-fixed-node
+         * @param {string} nodeId
+         */
+        async switchToNode(nodeId) {
+            try {
+                this.lbError = null;
+                this.lbLoading = true;
+
+                const res = await fetch("/lb/set-fixed-node", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({ node: nodeId }),
+                });
+
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || `Failed to switch to ${nodeId}`);
+                }
+
+                if (this.$root.toastSuccess) {
+                    this.$root.toastSuccess(`Switched to ${nodeId}`);
+                }
+
+                // Reload page so subsequent requests go to the new node
+                window.location.reload();
+            } catch (err) {
+                console.error(err);
+                this.lbError = err.message || "Failed to switch node";
+                if (this.$root.toastError) {
+                    this.$root.toastError(this.lbError);
+                }
+            } finally {
+                this.lbLoading = false;
+            }
+        },
+
+        /**
+         * Clear fixed node cookie and return to normal load balancing
+         */
+        async clearFixedNode() {
+            try {
+                this.lbError = null;
+                this.lbLoading = true;
+
+                const res = await fetch("/lb/clear-fixed-node", {
+                    method: "GET",
+                    credentials: "same-origin",
+                });
+
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || "Failed to clear fixed node");
+                }
+
+                if (this.$root.toastSuccess) {
+                    this.$root.toastSuccess("Using automatic load balancing");
+                }
+
+                window.location.reload();
+            } catch (err) {
+                console.error(err);
+                this.lbError = err.message || "Failed to clear fixed node";
+                if (this.$root.toastError) {
+                    this.$root.toastError(this.lbError);
+                }
+            } finally {
+                this.lbLoading = false;
+            }
+        },
     },
 };
 </script>
@@ -517,6 +722,99 @@ export default {
     height: calc(100vh - 150px);
     position: sticky;
     top: 10px;
+}
+
+.node-switch-trigger {
+    padding: 0;
+    border: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.node-switch-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+
+.node-switch-modal {
+    background-color: #ffffff;
+    border-radius: 12px;
+    min-width: 320px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+}
+
+.node-switch-modal .modal-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.node-switch-modal .modal-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.node-switch-modal .modal-body {
+    padding: 12px 16px 8px;
+}
+
+.node-switch-modal .modal-footer {
+    padding: 8px 16px 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.node-option-btn {
+    text-align: left;
+    border-radius: 999px;
+    border-width: 1px;
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
+.node-option-btn.btn-primary {
+    background: linear-gradient(90deg, $primary, $highlight);
+    border-color: transparent;
+    color: #000;
+}
+
+.node-option-btn.btn-outline-primary {
+    border-color: rgba(124, 232, 164, 0.4);
+    color: inherit;
+}
+
+.node-option-btn .badge {
+    font-size: 10px;
+}
+
+.dark {
+    .node-switch-modal {
+        background-color: $dark-bg2;
+        border: 1px solid $dark-border-color;
+    }
+
+    .node-switch-modal .modal-header {
+        border-bottom-color: $dark-border-color;
+    }
+
+    .node-switch-modal .modal-footer {
+        border-top-color: $dark-border-color;
+    }
+
+    .node-option-btn.btn-outline-primary {
+        border-color: rgba(124, 232, 164, 0.35);
+    }
+
+    .node-option-btn.btn-primary {
+        color: #020b05;
+    }
 }
 
 .small-padding {

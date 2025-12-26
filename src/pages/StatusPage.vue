@@ -643,7 +643,9 @@ export default {
                 format: true
             },
             // Heartbeat update management
-            heartbeatUpdateTimeout: null
+            heartbeatUpdateTimeout: null,
+            // All monitors from all nodes (for edit mode)
+            allNodesMonitorList: null
         };
     },
     computed: {
@@ -658,15 +660,21 @@ export default {
 
         /**
          * If the monitor is added to public list, which will not be in this list.
+         * In edit mode, use allNodesMonitorList to show monitors from all nodes.
          * @returns {object[]} List of monitors
          */
         sortedMonitorList() {
             let result = [];
 
-            if (this.$root.monitorList && this.$root.publicMonitorList) {
-                for (let id in this.$root.monitorList) {
-                    if (this.$root.monitorList[id] && ! (id in this.$root.publicMonitorList)) {
-                        let monitor = this.$root.monitorList[id];
+            // Use allNodesMonitorList in edit mode if available, otherwise fall back to $root.monitorList
+            const monitorSource = (this.enableEditMode && this.allNodesMonitorList) 
+                ? this.allNodesMonitorList 
+                : this.$root.monitorList;
+
+            if (monitorSource && this.$root.publicMonitorList) {
+                for (let id in monitorSource) {
+                    if (monitorSource[id] && ! (id in this.$root.publicMonitorList)) {
+                        let monitor = monitorSource[id];
                         result.push(monitor);
                     }
                 }
@@ -1712,11 +1720,44 @@ export default {
                     
                     // Load all groups and monitors for edit mode
                     this.loadAllDataForEditMode();
+                    
+                    // Load all monitors from all nodes for status page editing
+                    this.loadAllNodesMonitors();
                 } catch (error) {
                     console.error('Error enabling edit mode:', error);
                     this.$root.toastError("Failed to enable edit mode");
                 }
             }
+        },
+
+        /**
+         * Load all monitors from all nodes for status page editing
+         * This allows users to add monitors from any node to the status page
+         * @returns {void}
+         */
+        loadAllNodesMonitors() {
+            if (!this.$root.socket || !this.$root.socket.connected) {
+                console.log('Socket not connected, waiting for connection...');
+                // Retry after socket connection
+                setTimeout(() => {
+                    if (this.enableEditMode) {
+                        this.loadAllNodesMonitors();
+                    }
+                }, 1000);
+                return;
+            }
+            
+            console.log('Loading all monitors from all nodes for status page editing...');
+            this.$root.getSocket().emit("getAllMonitors", (res) => {
+                if (res.ok) {
+                    this.allNodesMonitorList = res.data;
+                    console.log(`Loaded ${Object.keys(res.data).length} monitors from all nodes`);
+                } else {
+                    console.error('Failed to load all monitors:', res.msg);
+                    // Fall back to current node monitors
+                    this.allNodesMonitorList = null;
+                }
+            });
         },
 
         /**
@@ -1800,6 +1841,8 @@ export default {
                 this.$root.getSocket().emit("saveStatusPage", this.slug, this.config, this.imgDataUrl, this.$root.publicGroupList || [], (res) => {
                     if (res && res.ok) {
                         this.enableEditMode = false;
+                        // Clear all nodes monitor list when exiting edit mode
+                        this.allNodesMonitorList = null;
                         // Update with complete data from server, not filtered by tab
                         this.$root.publicGroupList = res.publicGroupList || [];
                         
@@ -1852,6 +1895,8 @@ export default {
             this.$root.getSocket().emit("deleteStatusPage", this.slug, (res) => {
                 if (res && res.ok) {
                     this.enableEditMode = false;
+                    // Clear all nodes monitor list when exiting edit mode
+                    this.allNodesMonitorList = null;
                     location.href = "/manage-status-page";
                 } else {
                     this.$root.toastError(res && res.msg ? res.msg : "Delete failed");
