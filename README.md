@@ -29,7 +29,7 @@
 | **監控任務分配** | 單機處理所有監控 | 自動分配到最空閒節點 |
 | **節點健康檢查** | ❌ 無 | ✅ 定期檢查，異常自動標記 |
 | **開發除錯** | 直接連接 | ✅ 支援固定節點路由 (Cookie) |
-| **RESTful API** | ❌ 無集群管理 API | ✅ 完整集群狀態與操作 API |
+| **RESTful API** | ❌ 無集群管理 API | ✅ 支援程式自動化建立監控 |
 
 > 💡 **簡單來說**：原生 Uptime Kuma 是「單機版」，本專案將其改造為「集群版」，解決單點故障問題，適合需要高可用性的生產環境。
 
@@ -387,9 +387,222 @@ curl http://localhost:8084/lb/fixed-node-status
 
 ## 🌐 API 接口
 
+本專案提供兩層 API：**集群管理 API**（OpenResty Lua）與 **Uptime Kuma RESTful API**（監控器 CRUD），支援程式自動化操作。
+
+---
+
+### 🤖 程式自動化監控 RESTful API
+
+> 💡 **適用場景**：CI/CD 自動新增監控、腳本批次管理監控器、外部系統整合
+
+#### 📖 API 文件
+
+| 資源 | 網址 |
+|:---|:---|
+| **Swagger UI（互動式測試）** | `http://your-uptime-kuma-url/api-docs` |
+| **OpenAPI 3.0 JSON** | `http://your-uptime-kuma-url/api-docs.json` |
+
+#### 🔐 認證方式
+
+**方式一：JWT Token（推薦）**
+
+```bash
+# 在 API 請求 Header 中帶入 Token
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+     http://your-uptime-kuma-url/api/v1/monitors
+```
+
+**方式二：API Key**
+
+```bash
+# 在「設定」頁面產生 API Key 後使用
+curl -H "Authorization: YOUR_API_KEY" \
+     http://your-uptime-kuma-url/api/v1/monitors
+```
+
+#### 📋 監控器管理 API
+
+| 方法 | 路徑 | 描述 |
+|:---|:---|:---|
+| `GET` | `/api/v1/status` | 檢查 API 狀態與版本 |
+| `GET` | `/api/v1/monitors` | 取得所有監控器列表 |
+| `GET` | `/api/v1/monitors/{id}` | 取得特定監控器詳情 |
+| `POST` | `/api/v1/monitors` | **建立新監控器** |
+| `PUT` | `/api/v1/monitors/{id}` | 更新監控器設定 |
+| `DELETE` | `/api/v1/monitors/{id}` | 刪除監控器 |
+| `GET` | `/api/v1/monitors/{id}/heartbeats` | 取得監控器心跳歷史 |
+
+#### 🚀 快速範例：建立 HTTP 監控器
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Website",
+    "type": "http",
+    "url": "https://example.com",
+    "interval": 60,
+    "active": true
+  }' \
+  http://your-uptime-kuma-url/api/v1/monitors
+```
+
+#### 📊 推送監控（Push Monitor）
+
+適用於 Cron Job、CI/CD Pipeline 主動回報狀態：
+
+```bash
+# GET 方式
+curl "http://your-uptime-kuma-url/api/push/{pushToken}?status=up&msg=OK&ping=100"
+
+# POST 方式
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"status": "up", "msg": "Service is running", "ping": 150}' \
+  http://your-uptime-kuma-url/api/push/{pushToken}
+```
+
+#### 🏷️ 徽章 API（Badge）
+
+嵌入 README 或 Dashboard 顯示監控狀態：
+
+```markdown
+![Status](http://your-uptime-kuma-url/api/badge/{id}/status?style=flat)
+![Uptime](http://your-uptime-kuma-url/api/badge/{id}/uptime/24h)
+![Response Time](http://your-uptime-kuma-url/api/badge/{id}/ping/24h)
+```
+
+#### 💻 程式範例
+
+<details>
+<summary><b>Python 範例</b></summary>
+
+```python
+import requests
+
+class UptimeKumaAPI:
+    def __init__(self, base_url, token):
+        self.base_url = base_url
+        self.headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+    
+    def get_monitors(self):
+        """取得所有監控器"""
+        response = requests.get(
+            f'{self.base_url}/api/v1/monitors',
+            headers=self.headers
+        )
+        return response.json()
+    
+    def create_monitor(self, name, url, monitor_type='http', interval=60):
+        """建立新監控器"""
+        data = {
+            'name': name,
+            'type': monitor_type,
+            'url': url,
+            'interval': interval,
+            'active': True
+        }
+        response = requests.post(
+            f'{self.base_url}/api/v1/monitors',
+            json=data,
+            headers=self.headers
+        )
+        return response.json()
+
+# 使用範例
+api = UptimeKumaAPI('http://localhost:8084', 'YOUR_JWT_TOKEN')
+monitors = api.get_monitors()
+print(f"目前有 {len(monitors.get('data', []))} 個監控器")
+```
+</details>
+
+<details>
+<summary><b>Node.js 範例</b></summary>
+
+```javascript
+const axios = require('axios');
+
+const api = axios.create({
+  baseURL: 'http://localhost:8084',
+  headers: {
+    'Authorization': 'Bearer YOUR_JWT_TOKEN',
+    'Content-Type': 'application/json'
+  }
+});
+
+// 取得所有監控器
+async function getMonitors() {
+  const { data } = await api.get('/api/v1/monitors');
+  console.log(`目前有 ${data.data.length} 個監控器`);
+  return data;
+}
+
+// 建立新監控器
+async function createMonitor(name, url) {
+  const { data } = await api.post('/api/v1/monitors', {
+    name,
+    type: 'http',
+    url,
+    interval: 60,
+    active: true
+  });
+  console.log('已建立監控器:', data);
+  return data;
+}
+```
+</details>
+
+<details>
+<summary><b>PowerShell 範例</b></summary>
+
+```powershell
+$baseUrl = "http://localhost:8084"
+$token = "YOUR_JWT_TOKEN"
+$headers = @{
+    "Authorization" = "Bearer $token"
+    "Content-Type" = "application/json"
+}
+
+# 取得所有監控器
+$monitors = Invoke-RestMethod -Uri "$baseUrl/api/v1/monitors" -Headers $headers
+Write-Host "目前有 $($monitors.data.Count) 個監控器"
+
+# 建立新監控器
+$body = @{
+    name = "My Website"
+    type = "http"
+    url = "https://example.com"
+    interval = 60
+    active = $true
+} | ConvertTo-Json
+
+$newMonitor = Invoke-RestMethod -Uri "$baseUrl/api/v1/monitors" -Method Post -Headers $headers -Body $body
+Write-Host "已建立監控器: $($newMonitor.data.name)"
+```
+</details>
+
+#### ⚠️ 注意事項
+
+| 項目 | 說明 |
+|:---|:---|
+| **速率限制** | 每 15 分鐘每 IP 最多 100 個請求，超過返回 `429` |
+| **權限** | 使用者只能存取自己建立的監控器 |
+| **CORS** | API 支援跨域請求，可從前端直接呼叫 |
+| **版本** | 目前為 `v1`，未來版本將保持向後相容 |
+
+> 📄 **完整 API 文件**：請參考 [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+
+---
+
+### 🔍 集群管理 API（OpenResty）
+
 OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 
-### 🔍 狀態監控
+#### 狀態監控
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
@@ -402,7 +615,7 @@ OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 | `GET` | `/lb/load-balancer-status` | 查看節點負載分數、最後更新時間。 |
 | `GET` | `/lb/fault-detection-status` | 查看故障檢測掃描器的運行統計 |
 
-### 🎯 固定節點路由 API
+#### 🎯 固定節點路由 API
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |
@@ -413,7 +626,7 @@ OpenResty 提供了一系列 HTTP API 用於監控狀態與管理集群。
 | `GET` | `/lb/fixed-node-status` | 查看當前固定節點狀態 |
 | `GET` | `/lb/available-nodes` | 列出所有可用節點 |
 
-### ⚙️ 管理與操作
+#### ⚙️ 管理與操作
 
 | 方法 | 路徑 | 描述 |
 | :--- | :--- | :--- |

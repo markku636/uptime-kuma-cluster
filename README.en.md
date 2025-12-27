@@ -29,7 +29,7 @@
 | **Monitor Distribution** | Single machine handles all monitors | Auto-distribute to least busy node |
 | **Node Health Check** | ❌ None | ✅ Periodic check, auto-mark anomalies |
 | **Development/Debug** | Direct connection | ✅ Fixed node routing (Cookie) |
-| **RESTful API** | ❌ No cluster management API | ✅ Complete cluster status & operation API |
+| **RESTful API** | ❌ No cluster management API | ✅ Programmatic monitor creation & management |
 
 > 💡 **In short**: Original Uptime Kuma is "standalone", this project transforms it into a "cluster version", solving single point of failure issues, suitable for production environments requiring high availability.
 
