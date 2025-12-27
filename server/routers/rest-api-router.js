@@ -157,7 +157,7 @@ async function authenticateToken(req, res, next) {
  *       type: apiKey
  *       in: header
  *       name: Authorization
- *       description: API key authorization header. Example: "Authorization: {api_key}"
+ *       description: API key authorization header
  *   schemas:
  *     Monitor:
  *       type: object
@@ -324,7 +324,6 @@ router.get("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   post:
  *     summary: Create a new monitor
  *     tags: [Monitors]
- 
  *     requestBody:
  *       required: true
  *       content:
@@ -1197,7 +1196,7 @@ router.get("/api/v1/nodes/:id/monitors", authenticateToken, async (req, res) => 
  *   post:
  *     summary: Create a new monitor
  *     tags: [Monitors]
- 
+ *     security:
  *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
@@ -1668,7 +1667,7 @@ router.put("/api/v1/monitors/:id", authenticateToken, async (req, res) => {
  *   get:
  *     summary: Get all status pages
  *     tags: [Status Pages]
- 
+ *     security:
  *       - apiKeyAuth: []
  *     responses:
  *       200:
@@ -2109,7 +2108,7 @@ router.get("/api/v1/status-pages/:slug", authenticateToken, async (req, res) => 
  *   put:
  *     summary: Update status page by slug
  *     tags: [Status Pages]
- 
+ *     security:
  *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
