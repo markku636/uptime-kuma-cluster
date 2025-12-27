@@ -9,6 +9,8 @@
 
 **高可用 Uptime Kuma 集群解決方案 | High-Availability Uptime Kuma Cluster Solution**
 
+📖 [部落格詳解（架構與實作心法）| Blog Post](https://blog.markkulab.net/implement-uptime-kuma-cluster-vibe-coding/)
+
 </div>
 
 ---
