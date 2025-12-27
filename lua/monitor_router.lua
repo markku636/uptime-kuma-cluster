@@ -10,9 +10,63 @@ local FIXED_NODE_COOKIE = config.cookie.fixed_node_name
 -- 共享記憶體
 local routing_cache = ngx.shared.monitor_routing
 
+-- Setup 狀態快取 key
+local SETUP_COMPLETE_CACHE_KEY = "setup_complete"
+local SETUP_CHECK_TTL = 5  -- 每 5 秒檢查一次
+
 -- 使用共用資料庫模組
 local function db_connect()
     return db.connect()
+end
+
+-- ============================================================
+-- Setup 狀態檢查 (Setup Status Check)
+-- 在 setup 未完成前，所有請求只路由到主節點 (node1)
+-- ============================================================
+
+-- 檢查 setup 是否已完成（資料庫中是否有使用者）
+-- Check if setup is complete (if there are users in the database)
+function _M.is_setup_complete()
+    -- 先從快取檢查
+    local cached = routing_cache:get(SETUP_COMPLETE_CACHE_KEY)
+    if cached ~= nil then
+        return cached == "true"
+    end
+    
+    -- 從資料庫查詢
+    local db_conn, err = db_connect()
+    if not db_conn then
+        ngx.log(ngx.ERR, "is_setup_complete: cannot connect to DB, assuming setup incomplete")
+        return false
+    end
+    
+    local sql = "SELECT COUNT(*) as user_count FROM user LIMIT 1"
+    local res, qerr = db_conn:query(sql)
+    db_conn:close()
+    
+    if not res or #res == 0 then
+        ngx.log(ngx.WARN, "is_setup_complete: failed to query user count, assuming setup incomplete")
+        routing_cache:set(SETUP_COMPLETE_CACHE_KEY, "false", SETUP_CHECK_TTL)
+        return false
+    end
+    
+    local user_count = tonumber(res[1].user_count) or 0
+    local is_complete = user_count > 0
+    
+    -- 快取結果
+    routing_cache:set(SETUP_COMPLETE_CACHE_KEY, is_complete and "true" or "false", SETUP_CHECK_TTL)
+    
+    ngx.log(ngx.INFO, "is_setup_complete: user_count=", user_count, ", setup_complete=", tostring(is_complete))
+    return is_complete
+end
+
+-- 強制路由到主節點 (node1)
+-- Force route to primary node (node1)
+function _M.route_to_primary_node()
+    local host = config.cluster.node_host_prefix .. config.cluster.default_node
+    local port = config.cluster.default_port
+    ngx.log(ngx.INFO, "route_to_primary_node: setup not complete, routing to primary node ", host, ":", port)
+    return host, port
 end
 
 -- 根據 Monitor ID 路由
@@ -360,6 +414,32 @@ end
 function _M.preselect_node()
     local host, port
     local use_fixed_node = false
+    
+    -- 0. 首先檢查 setup 是否完成
+    -- First check if setup is complete
+    -- 如果 setup 未完成，強制路由到主節點 (node1)
+    -- If setup is not complete, force route to primary node (node1)
+    if not _M.is_setup_complete() then
+        host, port = _M.route_to_primary_node()
+        ngx.ctx.setup_pending = true  -- 標記 setup 尚未完成
+        
+        -- 解析 hostname 為 IP
+        local ip, err = resolve_host(host)
+        if not ip then
+            ngx.log(ngx.ERR, "preselect_node: failed to resolve primary node ", host, ": ", err)
+            ngx.ctx.upstream_host = nil
+            ngx.ctx.upstream_port = port
+            ngx.ctx.upstream_hostname = host
+            return
+        end
+        
+        ngx.ctx.upstream_host = ip
+        ngx.ctx.upstream_port = port
+        ngx.ctx.upstream_hostname = host
+        ngx.ctx.use_fixed_node = false
+        ngx.log(ngx.INFO, "preselect_node: setup pending, routed to primary node ", host, " (IP: ", ip, "):", port)
+        return
+    end
     
     -- 1. 先檢查是否有固定節點 Cookie
     -- First check if there's a fixed node Cookie

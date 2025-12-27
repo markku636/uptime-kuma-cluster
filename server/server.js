@@ -178,6 +178,52 @@ app.use(function (req, res, next) {
  */
 let needSetup = false;
 
+/**
+ * 判斷當前節點是否為主節點（負責 setup）
+ * 集群環境下，只有主節點才應該顯示 setup 頁面
+ * @returns {boolean} 是否為主節點
+ */
+function isPrimaryNodeForSetup() {
+    // 如果明確設定為主節點
+    if (process.env.UPTIME_KUMA_PRIMARY === "true" || process.env.UPTIME_KUMA_PRIMARY === "1") {
+        return true;
+    }
+    
+    // 如果沒有設定 NODE_ID，視為單節點模式（主節點）
+    if (!currentNodeId) {
+        return true;
+    }
+    
+    // 如果 NODE_ID 是 "node1"，視為主節點
+    if (currentNodeId === "node1") {
+        return true;
+    }
+    
+    // 其他情況視為從節點
+    return false;
+}
+
+/**
+ * 從節點等待主節點完成 setup
+ * 定期檢查資料庫中是否已有使用者
+ */
+function waitForPrimarySetup() {
+    const checkInterval = setInterval(async () => {
+        try {
+            const userCount = (await R.knex("user").count("id as count").first()).count;
+            if (userCount > 0) {
+                clearInterval(checkInterval);
+                needSetup = false;
+                log.info("server", "Primary node has completed setup. This secondary node is now ready.");
+            } else {
+                log.debug("server", "Waiting for primary node to complete setup...");
+            }
+        } catch (e) {
+            log.warn("server", "Failed to check user count while waiting for primary setup: " + e.message);
+        }
+    }, 3000); // 每 3 秒檢查一次
+}
+
 (async () => {
     // Create a data directory
     Database.initDataDir(args);
@@ -688,7 +734,22 @@ let needSetup = false;
         });
 
         socket.on("needSetup", async (callback) => {
-            callback(needSetup);
+            // 集群環境：每次都重新檢查資料庫中是否有使用者
+            // 這樣可以確保當主節點完成 setup 後，從節點也能即時獲得最新狀態
+            try {
+                const userCount = (await R.knex("user").count("id as count").first()).count;
+                const actualNeedSetup = userCount === 0;
+                
+                // 如果是從節點且還沒有使用者，不顯示 setup 頁面
+                if (actualNeedSetup && !isPrimaryNodeForSetup()) {
+                    callback(false); // 從節點不顯示 setup
+                } else {
+                    callback(actualNeedSetup);
+                }
+            } catch (e) {
+                log.warn("server", "Failed to check user count: " + e.message);
+                callback(needSetup);
+            }
         });
 
         socket.on("setup", async (username, password, callback) => {
@@ -1849,10 +1910,20 @@ async function initDatabase(testMode = false) {
     }
 
     // If there is no record in user table, it is a new Uptime Kuma instance, need to setup
+    // 集群感知模式：只有主節點才顯示 setup 頁面，從節點等待主節點完成
     let userCount = (await R.knex("user").count("id as count").first()).count;
     if (userCount === 0) {
-        log.info("server", "No user found, need setup");
-        needSetup = true;
+        const isPrimaryNode = isPrimaryNodeForSetup();
+        
+        if (isPrimaryNode) {
+            log.info("server", "No user found, need setup (primary node)");
+            needSetup = true;
+        } else {
+            log.info("server", `No user found, but this is secondary node (${currentNodeId}). Waiting for primary to complete setup...`);
+            needSetup = false;
+            // 啟動背景輪詢，等待主節點完成 setup
+            waitForPrimarySetup();
+        }
     }
 
     server.jwtSecret = jwtSecretBean.value;
