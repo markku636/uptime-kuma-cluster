@@ -8,13 +8,14 @@
 
 ```
 lua/
-├── config.lua         # 集中配置管理
-├── db.lua             # 共用資料庫連接模組
-├── logger.lua         # 共用日誌模組
-├── middleware.lua     # 中介層 (access/header_filter)
-├── health_check.lua   # 健康檢查與節點管理
-├── monitor_router.lua # 路由決策邏輯
-└── README.md          # 本說明文檔
+├── config.lua            # 集中配置管理
+├── db.lua                # 共用資料庫連接模組
+├── logger.lua            # 共用日誌模組
+├── middleware.lua        # 中介層 (access/header_filter)
+├── health_check.lua      # 健康檢查與節點管理
+├── monitor_router.lua    # 路由決策邏輯
+├── test_lua_modules.lua  # 單元測試模組
+└── README.md             # 本說明文檔
 ```
 
 ## 模組說明
@@ -162,6 +163,28 @@ local fixed_node = router.get_fixed_node_from_cookie()
 local valid, reason = router.validate_fixed_node(node_id)
 ```
 
+### test_lua_modules.lua - 單元測試
+
+用於驗證各模組功能的單元測試：
+
+```lua
+-- 執行方式: 在 OpenResty 環境中執行
+resty test_lua_modules.lua
+```
+
+測試涵蓋：
+- `config.lua` - 配置讀取和預設值
+- `logger.lua` - 日誌輸出和分類
+- `db.lua` - 資料庫連接
+- `monitor_router.lua` - 路由邏輯
+- `health_check.lua` - 健康檢查功能
+- `middleware.lua` - 中介層功能
+
+功能：
+- Mock ngx 物件支援非 OpenResty 環境測試
+- 自動統計通過/失敗測試數
+- 彩色輸出測試結果
+
 ## 環境變數
 
 | 變數名 | 說明 | 預設值 |
@@ -223,6 +246,7 @@ EMMY_DEBUG_PORT=9966
 - 重構：新增 `config.lua` 集中配置管理
 - 重構：新增 `db.lua` 共用資料庫模組
 - 重構：新增 `middleware.lua` 統一中介層
+- 新增：`test_lua_modules.lua` 單元測試模組
 - 優化：nginx.conf 減少約 70 行重複代碼
 - 優化：配置修改只需改一處
 
