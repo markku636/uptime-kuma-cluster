@@ -189,11 +189,44 @@ GET http://localhost:8084/lb/available-nodes    # Available nodes
 
 | # | Feature | Description |
 |:---|:---|:---|
+| 0️⃣ | [Start Cluster](#0️⃣-start-cluster) | One-command Docker Compose startup |
 | 1️⃣ | [Load Balancing](#1️⃣-load-balancing) | How requests are distributed to nodes |
 | 2️⃣ | [Fixed Node Routing](#2️⃣-fixed-node-routing) | How to pin traffic during development |
 | 3️⃣ | [RESTful API](#3️⃣-using-restful-api) | Common JSON APIs |
 | 4️⃣ | [.http Testing](#4️⃣-vs-code-http-tests) | One-click testing with VS Code |
 | 5️⃣ | [Failover](#5️⃣-failover--recovery) | Auto migration when node fails |
+
+### 0️⃣ Start Cluster
+
+Use Docker Compose to start the entire HA cluster with one command:
+
+```powershell
+# Run in project root
+docker compose -f docker-compose-cluster.yaml up -d --build
+```
+
+This will start the following services:
+
+| Service | Port | Description |
+|:---|:---|:---|
+| `openresty` | 8084 | Load balancer entry point (external) |
+| `uptime-kuma-node1` | 3001 | Uptime Kuma Node 1 |
+| `uptime-kuma-node2` | 3002 | Uptime Kuma Node 2 |
+| `uptime-kuma-node3` | 3003 | Uptime Kuma Node 3 |
+| `mariadb` | 3306 | Shared database |
+
+```powershell
+# Check container status
+docker ps
+
+# View real-time logs
+docker compose -f docker-compose-cluster.yaml logs -f
+
+# Stop cluster
+docker compose -f docker-compose-cluster.yaml down
+```
+
+> 💡 **Tip**: First startup requires waiting for MariaDB initialization (about 30 seconds). After that, visit `http://localhost:8084` to use the system.
 
 ### 1️⃣ Load Balancing
 

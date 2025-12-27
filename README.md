@@ -189,11 +189,44 @@ GET http://localhost:8084/lb/available-nodes    # 可用節點列表
 
 | # | 功能 | 說明 |
 |:---|:---|:---|
+| 0️⃣ | [啟動集群](#0️⃣-啟動集群) | Docker Compose 一鍵啟動 |
 | 1️⃣ | [負載平衡機制](#1️⃣-負載平衡機制) | 請求如何被分配到各節點 |
 | 2️⃣ | [指定節點](#2️⃣-指定節點) | 開發除錯時如何固定流量 |
 | 3️⃣ | [RESTful API](#3️⃣-使用-restful-api) | 常用的 JSON API |
 | 4️⃣ | [.http 測試](#4️⃣-http-測試) | VS Code 一鍵測試 |
 | 5️⃣ | [容錯移轉](#5️⃣-容錯移轉機制) | 節點掛掉時的自動移轉 |
+
+### 0️⃣ 啟動集群
+
+使用 Docker Compose 一鍵啟動整個高可用集群：
+
+```powershell
+# 於專案根目錄執行
+docker compose -f docker-compose-cluster.yaml up -d --build
+```
+
+這會啟動以下服務：
+
+| 服務 | Port | 說明 |
+|:---|:---|:---|
+| `openresty` | 8084 | 負載平衡器入口（對外） |
+| `uptime-kuma-node1` | 3001 | Uptime Kuma 節點 1 |
+| `uptime-kuma-node2` | 3002 | Uptime Kuma 節點 2 |
+| `uptime-kuma-node3` | 3003 | Uptime Kuma 節點 3 |
+| `mariadb` | 3306 | 共用資料庫 |
+
+```powershell
+# 查看容器運行狀態
+docker ps
+
+# 查看即時日誌
+docker compose -f docker-compose-cluster.yaml logs -f
+
+# 停止集群
+docker compose -f docker-compose-cluster.yaml down
+```
+
+> 💡 **提示**：首次啟動需要等待 MariaDB 初始化完成（約 30 秒），之後訪問 `http://localhost:8084` 即可使用。
 
 ### 1️⃣ 負載平衡機制
 
