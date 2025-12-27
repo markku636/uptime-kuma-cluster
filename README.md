@@ -277,6 +277,10 @@ curl http://localhost:8084/lb/fixed-node-status
 
 -----
 
+也可以透過Web UI，點擊現在的節點來切換節點
+<img width="2560" height="1380" alt="image" src="https://github.com/user-attachments/assets/7e08ce75-1321-4c7b-84c6-27e20bceb9a6" />
+
+
 ## 🏗️ 架構設計 | Architecture
 
 ### 系統邏輯架構 | System Logic Architecture
