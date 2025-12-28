@@ -1,16 +1,50 @@
 volumes:
   kuma-db:
     driver: local
+  kuma-db-replica:
+    driver: local
+  redis-data:
+    driver: local
 
 networks:
   kuma-network:
     driver: bridge
 
 services:
-  # Database
+  # ============================================================
+  # Redis Cache (高效能路由快取)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: uptime-kuma-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Database Primary (主資料庫 - 讀寫)
+  # ============================================================
   mariadb:
     image: mariadb:10
     container_name: uptime-kuma-mariadb
+    command: >
+      --max_connections=500
+      --innodb_buffer_pool_size=1G
+      --innodb_log_file_size=256M
+      --innodb_flush_log_at_trx_commit=2
+      --server-id=1
+      --log-bin=mysql-bin
+      --binlog-format=ROW
     environment:
       MYSQL_ROOT_PASSWORD: kuma_root_pass
       MYSQL_DATABASE: kuma
@@ -30,7 +64,42 @@ services:
       retries: 5
       start_period: 20s
 
-  # OpenResty load balancer / reverse proxy
+  # ============================================================
+  # Database Replica (讀取複本 - 分散讀取負載)
+  # ============================================================
+  mariadb-replica:
+    image: mariadb:10
+    container_name: uptime-kuma-mariadb-replica
+    command: >
+      --max_connections=500
+      --innodb_buffer_pool_size=512M
+      --server-id=2
+      --read-only=1
+    environment:
+      MYSQL_ROOT_PASSWORD: kuma_root_pass
+      MYSQL_DATABASE: kuma
+      MYSQL_USER: kuma
+      MYSQL_PASSWORD: kuma_pass
+    volumes:
+      - kuma-db-replica:/var/lib/mysql
+    ports:
+      - "9091:3306"
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================
+  # OpenResty Load Balancer
+  # ============================================================
   openresty:
     build:
       context: .
@@ -42,14 +111,30 @@ services:
       - "8084:80"
       # - "443:443"   # enable when SSL is configured
     environment:
+      # 主資料庫
       DB_HOST: "mariadb"
       DB_PORT: "3306"
       DB_USER: "kuma"
       DB_PASSWORD: "kuma_pass"
       DB_NAME: "kuma"
+      # 讀取複本
+      DB_REPLICA_ENABLED: "true"
+      DB_REPLICA_HOST: "mariadb-replica"
+      DB_REPLICA_PORT: "3306"
+      # Redis 快取
+      REDIS_ENABLED: "true"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      # 叢集配置
+      CLUSTER_NODE_COUNT: "10"
+      MONITOR_LIMIT_PER_NODE: "3000"
+      HEALTH_CHECK_INTERVAL: "10"
+      # 調試
       EMMY_DEBUG_ENABLED: "false"
     depends_on:
       mariadb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       uptime-kuma-node1:
         condition: service_started
@@ -61,10 +146,24 @@ services:
         condition: service_started
       uptime-kuma-node5:
         condition: service_started
+      uptime-kuma-node6:
+        condition: service_started
+      uptime-kuma-node7:
+        condition: service_started
+      uptime-kuma-node8:
+        condition: service_started
+      uptime-kuma-node9:
+        condition: service_started
+      uptime-kuma-node10:
+        condition: service_started
     networks:
       - kuma-network
 
-  # Single Uptime Kuma node
+  # ============================================================
+  # Uptime Kuma Nodes (10 節點)
+  # ============================================================
+  
+  # Node 1 (Primary - 負責 setup)
   uptime-kuma-node1:
     build:
       context: .
@@ -76,7 +175,7 @@ services:
     volumes:
       - ./data/node1:/app/data
     ports:
-      - "3001:3001"
+      - "33001:3001"
     environment:
       UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
       UPTIME_KUMA_DB_TYPE: "mariadb"
@@ -88,22 +187,22 @@ services:
       UPTIME_KUMA_NODE_ID: "node1"
       UPTIME_KUMA_NODE_NAME: "node1"
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
-      UPTIME_KUMA_PRIMARY: "true"  # 主節點：負責 setup
+      UPTIME_KUMA_PRIMARY: "true"
       API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
         condition: service_healthy
     networks:
       - kuma-network
     healthcheck:
-      # 檢查 node1 是否已完成初始化且有使用者存在
-      # Check if node1 has finished initialization AND has users (setup complete)
       test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/entry | grep -v 'setup' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 30s
 
+  # Node 2
   uptime-kuma-node2:
     build:
       context: .
@@ -115,7 +214,7 @@ services:
     volumes:
       - ./data/node2:/app/data
     ports:
-      - "3002:3001"
+      - "33002:3001"
     environment:
       UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
       UPTIME_KUMA_DB_TYPE: "mariadb"
@@ -129,6 +228,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -143,6 +243,7 @@ services:
       retries: 30
       start_period: 30s
 
+  # Node 3
   uptime-kuma-node3:
     build:
       context: .
@@ -154,7 +255,7 @@ services:
     volumes:
       - ./data/node3:/app/data
     ports:
-      - "3003:3001"
+      - "33003:3001"
     environment:
       UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
       UPTIME_KUMA_DB_TYPE: "mariadb"
@@ -168,6 +269,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -182,6 +284,7 @@ services:
       retries: 30
       start_period: 30s
 
+  # Node 4
   uptime-kuma-node4:
     build:
       context: .
@@ -193,7 +296,7 @@ services:
     volumes:
       - ./data/node4:/app/data
     ports:
-      - "3004:3001"
+      - "33004:3001"
     environment:
       UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
       UPTIME_KUMA_DB_TYPE: "mariadb"
@@ -207,6 +310,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -221,6 +325,7 @@ services:
       retries: 30
       start_period: 30s
 
+  # Node 5
   uptime-kuma-node5:
     build:
       context: .
@@ -232,7 +337,7 @@ services:
     volumes:
       - ./data/node5:/app/data
     ports:
-      - "3005:3001"
+      - "33005:3001"
     environment:
       UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
       UPTIME_KUMA_DB_TYPE: "mariadb"
@@ -246,6 +351,212 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node5:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Node 6 (新增)
+  uptime-kuma-node6:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-kuma-cluster:local
+    container_name: uptime-kuma-node6
+    restart: unless-stopped
+    volumes:
+      - ./data/node6:/app/data
+    ports:
+      - "33006:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node6"
+      UPTIME_KUMA_NODE_NAME: "node6"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node6:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Node 7 (新增)
+  uptime-kuma-node7:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-kuma-cluster:local
+    container_name: uptime-kuma-node7
+    restart: unless-stopped
+    volumes:
+      - ./data/node7:/app/data
+    ports:
+      - "33007:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node7"
+      UPTIME_KUMA_NODE_NAME: "node7"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node7:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Node 8 (新增)
+  uptime-kuma-node8:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-kuma-cluster:local
+    container_name: uptime-kuma-node8
+    restart: unless-stopped
+    volumes:
+      - ./data/node8:/app/data
+    ports:
+      - "33008:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node8"
+      UPTIME_KUMA_NODE_NAME: "node8"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node8:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Node 9 (新增)
+  uptime-kuma-node9:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-kuma-cluster:local
+    container_name: uptime-kuma-node9
+    restart: unless-stopped
+    volumes:
+      - ./data/node9:/app/data
+    ports:
+      - "33009:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node9"
+      UPTIME_KUMA_NODE_NAME: "node9"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node9:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Node 10 (新增)
+  uptime-kuma-node10:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-kuma-cluster:local
+    container_name: uptime-kuma-node10
+    restart: unless-stopped
+    volumes:
+      - ./data/node10:/app/data
+    ports:
+      - "33010:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+      UPTIME_KUMA_DB_TYPE: "mariadb"
+      UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+      UPTIME_KUMA_DB_PORT: "3306"
+      UPTIME_KUMA_DB_NAME: "kuma"
+      UPTIME_KUMA_DB_USERNAME: "kuma"
+      UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+      UPTIME_KUMA_NODE_ID: "node10"
+      UPTIME_KUMA_NODE_NAME: "node10"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node10:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+      API_RATE_LIMIT: "4000"
+      RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
         condition: service_healthy

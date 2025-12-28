@@ -2015,15 +2015,22 @@ async function startMonitors() {
         server.monitorList[monitor.id] = monitor;
     }
 
-    for (let monitor of list) {
-        try {
-            log.debug("server", `Starting monitor: ${monitor.name} (ID: ${monitor.id}, assigned_node: ${monitor.assigned_node || 'unassigned'})`);
-            await monitor.start(io);
-        } catch (e) {
-            log.error("monitor", e);
+    // 批次並行啟動監控，提升 1000+ 監控的啟動速度
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < list.length; i += BATCH_SIZE) {
+        const batch = list.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (monitor) => {
+            try {
+                log.debug("server", `Starting monitor: ${monitor.name} (ID: ${monitor.id}, assigned_node: ${monitor.assigned_node || 'unassigned'})`);
+                await monitor.start(io);
+            } catch (e) {
+                log.error("monitor", e);
+            }
+        }));
+        // 批次間短暫暫停，避免瞬間負載過高
+        if (i + BATCH_SIZE < list.length) {
+            await sleep(200);
         }
-        // Give some delays, so all monitors won't make request at the same moment when just start the server.
-        await sleep(getRandomInt(300, 1000));
     }
 }
 

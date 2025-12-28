@@ -223,9 +223,9 @@ class Database {
         let config = {};
 
         let mariadbPoolConfig = {
-            min: 0,
-            max: 10,
-            idleTimeoutMillis: 30000,
+            min: 2,
+            max: 50,
+            idleTimeoutMillis: 60000,
         };
 
         log.info("db", `Database Type: ${dbConfig.type}`);

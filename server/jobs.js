@@ -4,6 +4,9 @@ const { clearOldData } = require("./jobs/clear-old-data");
 const { incrementalVacuum } = require("./jobs/incremental-vacuum");
 const Cron = require("croner");
 
+// Reconciliation interval - 預設 30 秒，可透過環境變數調整
+const RECONCILE_INTERVAL_SEC = parseInt(process.env.RECONCILE_INTERVAL_SEC) || 30;
+
 const jobs = [
     {
         name: "clear-old-data",
@@ -20,7 +23,8 @@ const jobs = [
     ,
     {
         name: "reconcile-monitors",
-        interval: "*/1 * * * *",
+        // 使用環境變數 RECONCILE_INTERVAL_SEC，預設每 30 秒執行一次
+        interval: `*/${RECONCILE_INTERVAL_SEC} * * * * *`,
         jobFunc: async () => {
             try {
                 await reconcileMonitors();

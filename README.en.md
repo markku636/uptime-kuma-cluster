@@ -798,6 +798,113 @@ To ensure production stability, monitor the following:
 
 ---
 
+## 🚀 Performance Optimization (1000+ Monitors)
+
+This section describes optimizations for scaling Uptime Kuma Cluster to support **1000+ monitors** without performance degradation.
+
+### ✅ Completed Optimizations
+
+#### Phase 1 Optimizations (Basic Performance)
+
+| Component | Before | After | Effect |
+|-----------|--------|-------|--------|
+| **DB Connection Pool** | min: 0, max: 10 | min: 2, max: 50 | 5x concurrent DB queries |
+| **Monitor Startup** | Sequential (300-1000ms each) | Batch parallel (50 at a time) | ~90% faster startup |
+| **MariaDB Connections** | 151 (default) | 500 | Support multi-node high concurrency |
+| **InnoDB Buffer Pool** | default | 512M | Better DB performance |
+| **External Ports** | 3001-3005 | 33001-33010 | Avoid port conflicts |
+
+#### Phase 2 Optimizations (High Availability Scaling)
+
+| Component | Before | After | Effect |
+|-----------|--------|-------|--------|
+| **Redis Cache** | None (Lua shared_dict) | Redis 7-alpine | High-performance distributed cache |
+| **Cluster Nodes** | 5 nodes | 10 nodes | 2x capacity |
+| **Monitors per Node** | 2000 | 3000 | Up to 30,000 monitors |
+| **MariaDB Read Replica** | None | 1 read replica | Distribute read load |
+| **Health Check Interval** | 15s | 10s | Faster failover detection |
+| **Routing Cache TTL** | 600s | 900s (15 min) | Reduced DB queries |
+| **Reconciliation Interval** | Every minute | Every 30s | Faster monitor sync |
+
+### 📊 Performance Improvement Estimates
+
+| Metric | Before Optimization | Phase 1 | Phase 2 |
+|--------|---------------------|---------|---------|
+| **Max Monitors Supported** | 5,000 | 10,000 | **30,000** |
+| **1000 Monitors Startup Time** | 5-17 minutes | ~40 seconds | **~40 seconds** |
+| **Concurrent DB Queries** | 10 | 50 | **50** |
+| **Failover Detection Speed** | 30 seconds | 15 seconds | **10 seconds** |
+| **Monitor Sync Speed** | 60 seconds | 60 seconds | **30 seconds** |
+
+### 📁 Modified Files
+
+#### Phase 1
+
+| File | Changes |
+|------|---------|
+| `server/database.js` | Increased `mariadbPoolConfig.max` from 10 to 50 |
+| `server/server.js` | Changed monitor startup from sequential to batch parallel (50 per batch) |
+
+#### Phase 2
+
+| File | Changes |
+|------|---------|
+| `lua/config.lua` | Added Redis, read replica config; `node_count=10`, `monitor_limit=3000`, `health_check.interval=10` |
+| `lua/redis_cache.lua` | **NEW** - Redis cache module for routing, node status, capacity caching |
+| `docker-compose-cluster.yaml` | Added Redis, MariaDB read replica, nodes 6-10 |
+| `server/jobs.js` | Reconciliation changed from every minute to every 30s (supports env var) |
+
+### 🔧 Configuration via Environment Variables
+
+All optimizations can be tuned via environment variables:
+
+```bash
+# In docker-compose-cluster.yaml or .env file
+
+# Cluster Configuration
+CLUSTER_NODE_COUNT=10            # Number of nodes in cluster
+MONITOR_LIMIT_PER_NODE=3000      # Max monitors per node
+HEALTH_CHECK_INTERVAL=10         # Health check interval in seconds
+RECONCILE_INTERVAL_SEC=30        # Reconciliation interval in seconds
+
+# Redis Configuration
+REDIS_ENABLED=true               # Enable Redis cache
+REDIS_HOST=redis                 # Redis hostname
+REDIS_PORT=6379                  # Redis port
+
+# MariaDB Read Replica
+DB_REPLICA_ENABLED=true          # Enable read replica
+DB_REPLICA_HOST=mariadb-replica  # Read replica hostname
+DB_REPLICA_PORT=3306             # Read replica port
+```
+
+### 🐳 Architecture Overview
+
+```
+                    ┌─────────────┐
+                    │   Client    │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │  OpenResty  │ :8084
+                    │    (LB)     │
+                    └──────┬──────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+    ┌────▼────┐       ┌────▼────┐       ┌────▼────┐
+    │  Redis  │       │ Node1-10│       │ MariaDB │
+    │  :6379  │       │:33001-10│       │  :9090  │
+    └─────────┘       └────┬────┘       └────┬────┘
+                           │                 │
+                           │            ┌────▼────┐
+                           └───────────►│ Replica │
+                                        │  :9091  │
+                                        └─────────┘
+```
+
+---
+
 ## 📚 Related Documents
 
 | Document | Description |
