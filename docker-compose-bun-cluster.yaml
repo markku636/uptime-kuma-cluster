@@ -1,0 +1,234 @@
+# =============================================================================
+# Uptime Kuma Cluster with Bun Runtime
+# =============================================================================
+# This docker-compose configuration runs Uptime Kuma using Bun instead of Node.js
+# for improved performance and faster startup times.
+#
+# Usage:
+#   docker-compose -f docker-compose-bun-cluster.yaml up -d --build
+#
+# =============================================================================
+
+volumes:
+  kuma-db:
+    driver: local
+
+networks:
+  kuma-network:
+    driver: bridge
+
+x-kuma-common: &kuma-common
+  image: uptime-kuma-bun-cluster:local
+  restart: unless-stopped
+  networks:
+    - kuma-network
+  environment: &kuma-env
+    UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+    UPTIME_KUMA_DB_TYPE: "mariadb"
+    UPTIME_KUMA_DB_HOSTNAME: "mariadb"
+    UPTIME_KUMA_DB_PORT: "3306"
+    UPTIME_KUMA_DB_NAME: "kuma"
+    UPTIME_KUMA_DB_USERNAME: "kuma"
+    UPTIME_KUMA_DB_PASSWORD: "kuma_pass"
+    API_RATE_LIMIT: "4000"
+
+services:
+  # ==========================================================================
+  # Database - MariaDB
+  # ==========================================================================
+  mariadb:
+    image: mariadb:10
+    container_name: uptime-kuma-bun-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: kuma_root_pass
+      MYSQL_DATABASE: kuma
+      MYSQL_USER: kuma
+      MYSQL_PASSWORD: kuma_pass
+    volumes:
+      - kuma-db:/var/lib/mysql
+    ports:
+      - "9091:3306"
+    restart: unless-stopped
+    networks:
+      - kuma-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ==========================================================================
+  # OpenResty Load Balancer / Reverse Proxy
+  # ==========================================================================
+  openresty:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: uptimekuma-openresty-bun:standalone
+    container_name: uptime-kuma-bun-openresty
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+      # - "443:443"   # enable when SSL is configured
+    environment:
+      DB_HOST: "mariadb"
+      DB_PORT: "3306"
+      DB_USER: "kuma"
+      DB_PASSWORD: "kuma_pass"
+      DB_NAME: "kuma"
+      EMMY_DEBUG_ENABLED: "false"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_started
+      uptime-kuma-node2:
+        condition: service_started
+      uptime-kuma-node3:
+        condition: service_started
+    networks:
+      - kuma-network
+
+  # ==========================================================================
+  # Uptime Kuma Node 1 (Primary Node) - Also builds the shared image
+  # ==========================================================================
+  uptime-kuma-node1:
+    <<: *kuma-common
+    build:
+      context: .
+      dockerfile: docker/dockerfile.bun
+      target: release
+    container_name: uptime-kuma-node1
+    volumes:
+      - ./data/node1:/app/data
+    ports:
+      - "3011:3001"
+    environment:
+      <<: *kuma-env
+      UPTIME_KUMA_NODE_ID: "node1"
+      UPTIME_KUMA_NODE_NAME: "node1"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
+      UPTIME_KUMA_PRIMARY: "true"  # 主節點：負責 setup
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      # 檢查 node1 是否已完成初始化且有使用者存在
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/entry | grep -v 'setup' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ==========================================================================
+  # Uptime Kuma Node 2
+  # ==========================================================================
+  uptime-kuma-node2:
+    <<: *kuma-common
+    container_name: uptime-kuma-node2
+    volumes:
+      - ./data/node2:/app/data
+    ports:
+      - "3012:3001"
+    environment:
+      <<: *kuma-env
+      UPTIME_KUMA_NODE_ID: "node2"
+      UPTIME_KUMA_NODE_NAME: "node2"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ==========================================================================
+  # Uptime Kuma Node 3
+  # ==========================================================================
+  uptime-kuma-node3:
+    <<: *kuma-common
+    container_name: uptime-kuma-node3
+    volumes:
+      - ./data/node3:/app/data
+    ports:
+      - "3013:3001"
+    environment:
+      <<: *kuma-env
+      UPTIME_KUMA_NODE_ID: "node3"
+      UPTIME_KUMA_NODE_NAME: "node3"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ==========================================================================
+  # Uptime Kuma Node 4
+  # ==========================================================================
+  uptime-kuma-node4:
+    <<: *kuma-common
+    container_name: uptime-kuma-node4
+    volumes:
+      - ./data/node4:/app/data
+    ports:
+      - "3014:3001"
+    environment:
+      <<: *kuma-env
+      UPTIME_KUMA_NODE_ID: "node4"
+      UPTIME_KUMA_NODE_NAME: "node4"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ==========================================================================
+  # Uptime Kuma Node 5
+  # ==========================================================================
+  uptime-kuma-node5:
+    <<: *kuma-common
+    container_name: uptime-kuma-node5
+    volumes:
+      - ./data/node5:/app/data
+    ports:
+      - "3015:3001"
+    environment:
+      <<: *kuma-env
+      UPTIME_KUMA_NODE_ID: "node5"
+      UPTIME_KUMA_NODE_NAME: "node5"
+      UPTIME_KUMA_NODE_HOST: "uptime-kuma-node5:3001"
+      UPTIME_KUMA_FORCE_MIGRATE: "true"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      uptime-kuma-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/entry || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

@@ -1,0 +1,228 @@
+############################################
+# Bun Base Image for Uptime Kuma Cluster
+############################################
+
+############################################
+# Build Frontend Assets with Bun
+############################################
+FROM oven/bun:1.1-debian AS build_frontend
+USER root
+WORKDIR /app
+
+# Install git for npm dependencies and curl for healthcheck
+RUN apt-get update && apt-get --yes --no-install-recommends install git curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy package files
+COPY package.json package.json
+COPY package-lock.json package-lock.json
+COPY .npmrc .npmrc
+
+# Install dependencies using bun
+RUN bun install --frozen-lockfile
+
+# Copy source files and build frontend
+COPY . .
+RUN bun run build
+
+############################################
+# Build Production Dependencies with Bun
+############################################
+FROM oven/bun:1.1-debian AS build
+USER root
+WORKDIR /app
+
+# Install required system dependencies
+RUN apt-get update && apt-get --yes --no-install-recommends install \
+    git \
+    curl \
+    ca-certificates \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+
+# Copy package files
+COPY package.json package.json
+COPY package-lock.json package-lock.json
+COPY .npmrc .npmrc
+
+# Install production dependencies only
+RUN bun install --frozen-lockfile --production
+
+# Copy application source
+COPY . .
+
+# Create data directory
+RUN mkdir -p ./data
+
+# Copy pre-built frontend assets from frontend build stage
+COPY --from=build_frontend /app/dist/ ./dist/
+
+# Create Bun compatibility shim for perf_hooks.monitorEventLoopDelay
+RUN mkdir -p /app/bun-shims && \
+    echo 'const originalPerfHooks = require("perf_hooks");' > /app/bun-shims/perf_hooks.js && \
+    echo '' >> /app/bun-shims/perf_hooks.js && \
+    echo '// Shim for monitorEventLoopDelay (not implemented in Bun)' >> /app/bun-shims/perf_hooks.js && \
+    echo 'if (!originalPerfHooks.monitorEventLoopDelay) {' >> /app/bun-shims/perf_hooks.js && \
+    echo '  originalPerfHooks.monitorEventLoopDelay = function(options) {' >> /app/bun-shims/perf_hooks.js && \
+    echo '    return {' >> /app/bun-shims/perf_hooks.js && \
+    echo '      enable: () => {},' >> /app/bun-shims/perf_hooks.js && \
+    echo '      disable: () => {},' >> /app/bun-shims/perf_hooks.js && \
+    echo '      reset: () => {},' >> /app/bun-shims/perf_hooks.js && \
+    echo '      percentile: () => 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '      percentiles: new Map(),' >> /app/bun-shims/perf_hooks.js && \
+    echo '      min: 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '      max: 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '      mean: 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '      stddev: 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '      exceeds: 0,' >> /app/bun-shims/perf_hooks.js && \
+    echo '    };' >> /app/bun-shims/perf_hooks.js && \
+    echo '  };' >> /app/bun-shims/perf_hooks.js && \
+    echo '}' >> /app/bun-shims/perf_hooks.js && \
+    echo '' >> /app/bun-shims/perf_hooks.js && \
+    echo 'module.exports = originalPerfHooks;' >> /app/bun-shims/perf_hooks.js
+
+############################################
+# ⭐ Main Bun Release Image
+############################################
+FROM oven/bun:1.1-debian AS release
+USER root
+WORKDIR /app
+
+LABEL org.opencontainers.image.source="https://github.com/louislam/uptime-kuma"
+LABEL runtime="bun-hybrid"
+
+# Install runtime dependencies including Node.js for compatibility
+RUN apt-get update && apt-get --yes --no-install-recommends install \
+    curl \
+    ca-certificates \
+    iputils-ping \
+    util-linux \
+    dumb-init \
+    gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get --yes --no-install-recommends install nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV UPTIME_KUMA_IS_CONTAINER=1
+ENV NODE_ENV=production
+# Add bun shims to resolve path for compatibility
+ENV BUN_SHIMS_PATH=/app/bun-shims
+
+# Copy app files from build layer
+COPY --from=build /app /app
+
+# Create non-root user
+RUN groupadd -r kuma && useradd -r -g kuma kuma && \
+    chown -R kuma:kuma /app
+
+EXPOSE 3001
+
+# Healthcheck using curl
+HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
+    CMD curl -sf http://localhost:3001/api/entry || exit 1
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+# Use node instead of bun due to compatibility issues with perf_hooks
+CMD ["node", "server/server.js"]
+
+############################################
+# Rootless Bun Image
+############################################
+FROM release AS rootless
+USER kuma
+
+############################################
+# Development Image with Hot Reload
+############################################
+FROM oven/bun:1.1-debian AS development
+USER root
+WORKDIR /app
+
+# Install development dependencies
+RUN apt-get update && apt-get --yes --no-install-recommends install \
+    git \
+    curl \
+    ca-certificates \
+    python3 \
+    make \
+    g++ \
+    iputils-ping \
+    util-linux \
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+ENV NODE_ENV=development
+
+# Copy package files
+COPY package.json package.json
+COPY package-lock.json package-lock.json
+COPY .npmrc .npmrc
+
+# Install all dependencies (including dev)
+RUN bun install --frozen-lockfile
+
+# Copy application source
+COPY . .
+
+# Create non-root user
+RUN groupadd -r kuma && useradd -r -g kuma kuma && \
+    chown -R kuma:kuma /app
+
+EXPOSE 3000 3001
+
+HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
+    CMD curl -sf http://localhost:3001/api/entry || exit 1
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["bun", "run", "dev"]
+
+############################################
+# Slim Production Image (minimal footprint)
+############################################
+FROM oven/bun:1.1-alpine AS release-slim
+USER root
+WORKDIR /app
+
+LABEL org.opencontainers.image.source="https://github.com/louislam/uptime-kuma"
+LABEL runtime="bun-hybrid"
+LABEL variant="slim"
+
+# Install minimal runtime dependencies including Node.js
+RUN apk add --no-cache \
+    curl \
+    ca-certificates \
+    iputils \
+    dumb-init \
+    nodejs
+
+ENV UPTIME_KUMA_IS_CONTAINER=1
+ENV NODE_ENV=production
+
+# Copy app files from build layer
+COPY --from=build /app /app
+
+# Create non-root user
+RUN addgroup -S kuma && adduser -S kuma -G kuma && \
+    chown -R kuma:kuma /app
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
+    CMD curl -sf http://localhost:3001/api/entry || exit 1
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "server/server.js"]
+
+############################################
+# Slim Rootless Image
+############################################
+FROM release-slim AS release-slim-rootless
+USER kuma
