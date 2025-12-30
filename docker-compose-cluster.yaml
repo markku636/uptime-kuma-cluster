@@ -162,6 +162,13 @@ services:
   # ============================================================
   # Uptime Kuma Nodes (10 節點)
   # ============================================================
+  # 
+  # 環境變數說明:
+  # - RECONCILE_INTERVAL_SEC: 監控任務同步間隔（秒）
+  #   節點每隔此時間查詢資料庫，確認分配給自己的監控任務
+  #   建議值: 15-60 秒，越小同步越快但資料庫負載越高
+  # - API_RATE_LIMIT: API 請求速率限制（每分鐘）
+  # ============================================================
   
   # Node 1 (Primary - 負責 setup)
   uptime-kuma-node1:
@@ -189,6 +196,8 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node1:3001"
       UPTIME_KUMA_PRIMARY: "true"
       API_RATE_LIMIT: "4000"
+      # 監控任務同步間隔（秒）- 節點每隔此時間查詢資料庫，確認分配給自己的監控任務
+      # 建議值: 15-60 秒，越小同步越快但資料庫負載越高
       RECONCILE_INTERVAL_SEC: "30"
     depends_on:
       mariadb:
@@ -228,7 +237,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node2:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -269,7 +278,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node3:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -310,7 +319,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node4:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -351,7 +360,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node5:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -392,7 +401,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node6:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -433,7 +442,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node7:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -474,7 +483,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node8:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
@@ -515,7 +524,7 @@ services:
       UPTIME_KUMA_NODE_HOST: "uptime-kuma-node9:3001"
       UPTIME_KUMA_FORCE_MIGRATE: "true"
       API_RATE_LIMIT: "4000"
-      RECONCILE_INTERVAL_SEC: "30"
+      RECONCILE_INTERVAL_SEC: "30"  # 監控任務同步間隔（秒）
     depends_on:
       mariadb:
         condition: service_healthy
