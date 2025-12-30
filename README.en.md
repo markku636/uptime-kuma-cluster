@@ -57,33 +57,8 @@
 ---
 
 ## 🎯 Overview
-
-### ⚡ TL;DR (One-minute Overview)
-
-```
-                    ┌─────────────────────────────────────────────────────────┐
-                    │                    OpenResty LB                         │
-  Client ──────────▶│  Lua: Two-phase routing + Health check + Auto failover │
-                    └─────────┬─────────────┬─────────────┬───────────────────┘
-                              │             │             │
-                              ▼             ▼             ▼
-                    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-                    │   Node 1    │ │   Node 2    │ │   Node 3    │  ← Uptime Kuma Nodes
-                    │   :3001     │ │   :3002     │ │   :3003     │
-                    └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-                           │               │               │
-                           └───────────────┴───────────────┘
-                                           │
-                                           ▼
-                                    ┌─────────────┐
-                                    │   MariaDB   │  ← Shared Database
-                                    └─────────────┘
-```
-
-**Core Value**: Original Uptime Kuma is single-node architecture. This project implements **multi-node high availability** through OpenResty + Lua, automatically migrating monitor tasks when a node fails.
-
 ### System Logic Architecture
-
+**Core Value**: Original Uptime Kuma is single-node architecture. This project implements **multi-node high availability** through OpenResty + Lua, automatically migrating monitor tasks when a node fails.
 ```mermaid
 graph TD
     Client[Client Request] --> Nginx[Nginx OpenResty<br>Load Balancer]
