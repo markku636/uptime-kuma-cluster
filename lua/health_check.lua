@@ -219,10 +219,11 @@ function _M.init()
 end
 
 -- 檢查單個節點的健康狀態
+-- 支援 Docker Compose 和 K8s 雙環境
 function _M.check_node_health(host)
     -- 調試斷點
     if DEBUG_CONFIG.enabled then
-        network_debug_log("開始檢查節點 %s", host)
+        network_debug_log("開始檢查節點 %s (環境: %s)", host, config.environment)
     end
     
     -- 從 host 中解析主機名和端口
@@ -232,13 +233,9 @@ function _M.check_node_health(host)
         return false, "invalid_host_format"
     end
     
-    -- 如果沒有指定端口，根據協議決定默認端口
+    -- 如果沒有指定端口，使用配置的預設端口
     if not port or port == "" then
-        if hostname:find("https") then
-            port = 443  -- HTTPS 默認端口
-        else
-            port = 80   -- HTTP 默認端口
-        end
+        port = config.cluster.default_port
     else
         port = tonumber(port)
     end

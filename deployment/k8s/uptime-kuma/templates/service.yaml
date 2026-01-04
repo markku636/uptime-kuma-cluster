@@ -1,0 +1,64 @@
+# =============================================================================
+# Headless Service for StatefulSet
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.service.headless.name }}
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: {{ .Values.uptimeKuma.containerPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "uptime-kuma.selectorLabels" . | nindent 4 }}
+---
+# =============================================================================
+# Main Service (Load Balancer via OpenResty)
+# =============================================================================
+{{- if .Values.openresty.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.openresty.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "uptime-kuma.openresty.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+# =============================================================================
+# MariaDB Service
+# =============================================================================
+{{- if .Values.mariadb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-mariadb
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.mariadb.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.mariadb.containerPort }}
+      targetPort: mysql
+      protocol: TCP
+      name: mysql
+  selector:
+    {{- include "uptime-kuma.mariadb.selectorLabels" . | nindent 4 }}
+{{- end }}

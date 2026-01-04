@@ -1,6 +1,7 @@
 const { BeanModel } = require("redbean-node/dist/bean-model");
 const { R } = require("redbean-node");
 const { log } = require("../../src/util");
+const clusterEnv = require("../util/cluster-env");
 
 class Node extends BeanModel {
     /**
@@ -122,43 +123,66 @@ class Node extends BeanModel {
 
     /**
      * Initialize node from environment variable if set
+     * 支援 Docker Compose 和 K8s 雙環境
      * @returns {Promise<void>}
      */
     static async initializeFromEnv() {
         const currentNodeId = process.env.UPTIME_KUMA_NODE_ID || process.env.NODE_ID || null;
+        
         if (currentNodeId) {
             try {
+                // 使用 cluster-env 取得節點配置
+                const nodeConfig = clusterEnv.getNodeConfig(currentNodeId);
+                
+                log.info("node", `Initializing node in ${nodeConfig.environment} environment`);
+                log.info("node", `  Node ID: ${nodeConfig.nodeId}`);
+                log.info("node", `  Node Format: ${nodeConfig.nodeFormat}`);
+                log.info("node", `  Node Host: ${nodeConfig.nodeHost}`);
+                log.info("node", `  Is Primary: ${nodeConfig.isPrimary}`);
+                
+                // 驗證節點配置
+                const validation = clusterEnv.validateNodeConfig(currentNodeId);
+                if (!validation.valid) {
+                    log.warn("node", `Node config validation warnings: ${validation.errors.join(", ")}`);
+                }
+                
                 // 先檢查節點是否已存在
                 const existingNode = await Node.getByNodeId(currentNodeId);
+                
                 if (existingNode) {
-                    log.info("node", `Node ${currentNodeId} already exists, skipping creation. Current status: ${existingNode.status || 'unknown'}`);
+                    log.info("node", `Node ${currentNodeId} already exists, updating...`);
                     
-                    // 更新現有節點的基本信息（host、名稱等）
-                    const nodeHost = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
-                    const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
-                    
-                    // 只更新必要的信息，不改變主節點狀態（避免 R.store 可能觸發 INSERT）
+                    // 更新現有節點的基本信息
                     const now = R.isoDateTime();
                     await R.exec(
                         "UPDATE node SET node_name = ?, host = ?, modified_date = ?, status = ?, last_seen = ? WHERE node_id = ?",
-                        [ nodeName, nodeHost, now, "online", now, currentNodeId ]
+                        [nodeConfig.nodeName, nodeConfig.nodeHost, now, "online", now, currentNodeId]
                     );
-                    log.info("node", `Updated existing node from env: ${currentNodeId} (${nodeName}) - Host: ${nodeHost}`);
+                    
+                    // 如果是主節點但資料庫未標記，更新之
+                    if (nodeConfig.isPrimary && !existingNode.is_primary) {
+                        await Node.setPrimaryNode(currentNodeId);
+                        log.info("node", `Set node ${currentNodeId} as primary`);
+                    }
+                    
+                    log.info("node", `Updated existing node: ${currentNodeId} (${nodeConfig.nodeName}) - Host: ${nodeConfig.nodeHost}`);
                     return;
                 }
                 
                 // 節點不存在，創建新節點
-                const nodeHost = process.env.UPTIME_KUMA_NODE_HOST || process.env.NODE_HOST || "127.0.0.1";
-                const nodeName = process.env.UPTIME_KUMA_NODE_NAME || process.env.NODE_NAME || currentNodeId;
-                const isPrimary = (process.env.UPTIME_KUMA_PRIMARY === "1" || process.env.UPTIME_KUMA_PRIMARY === "true");
+                log.info("node", `Creating new node: ${currentNodeId}`);
+                await Node.createOrUpdate(
+                    currentNodeId,
+                    nodeConfig.nodeName,
+                    nodeConfig.nodeHost,
+                    nodeConfig.isPrimary
+                );
                 
-                log.info("node", `Creating new node: ${currentNodeId} (${nodeName}) - Host: ${nodeHost}${isPrimary ? " [primary]" : ""}`);
-                await Node.createOrUpdate(currentNodeId, nodeName, nodeHost, isPrimary);
+                log.info("node", `Created node: ${currentNodeId} (${nodeConfig.nodeName}) - Host: ${nodeConfig.nodeHost}${nodeConfig.isPrimary ? " [primary]" : ""}`);
                 
             } catch (error) {
                 log.error("node", `Failed to initialize node ${currentNodeId}: ${error.message}`);
                 // 不要讓節點初始化失敗阻止整個應用啟動
-                // 可以考慮重試或使用預設值
             }
         } else {
             // No environment variables set, ensure we have at least one default node
@@ -167,10 +191,10 @@ class Node extends BeanModel {
                 // Create a default local node
                 const defaultNodeId = "local-node";
                 const defaultNodeName = "Local Node";
-                const defaultNodeHost = "127.0.0.1";
+                const defaultNodeHost = "127.0.0.1:3001";
                 
                 log.info("node", "No nodes found and no environment variables set. Creating default local node.");
-                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeHost, true); // Make it primary
+                await Node.createOrUpdate(defaultNodeId, defaultNodeName, defaultNodeHost, true);
             }
         }
     }

@@ -1,0 +1,32 @@
+1. 取得應用程式 URL：
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ include "uptime-kuma.namespace" . }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "uptime-kuma.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ include "uptime-kuma.namespace" . }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  注意：LoadBalancer 可能需要幾分鐘才能取得外部 IP
+  kubectl get --namespace {{ include "uptime-kuma.namespace" . }} svc -w {{ include "uptime-kuma.fullname" . }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ include "uptime-kuma.namespace" . }} -l "app.kubernetes.io/name={{ include "uptime-kuma.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ include "uptime-kuma.namespace" . }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ include "uptime-kuma.namespace" . }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. 檢查部署狀態：
+  kubectl get pods -n {{ include "uptime-kuma.namespace" . }}
+  kubectl get svc -n {{ include "uptime-kuma.namespace" . }}
+
+3. 查看 Pod 日誌：
+  kubectl logs -f -l app.kubernetes.io/name={{ include "uptime-kuma.name" . }} -n {{ include "uptime-kuma.namespace" . }}
+
+4. 重要提醒：
+  - 請先手動部署 Secret 和 PersistentVolume
+  - Secret: {{ include "uptime-kuma.fullname" . }}-db-secret
+  - PVC: {{ include "uptime-kuma.fullname" . }}-mariadb-pvc (如果啟用持久化存儲)

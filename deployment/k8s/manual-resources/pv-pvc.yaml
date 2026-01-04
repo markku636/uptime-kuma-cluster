@@ -1,0 +1,110 @@
+# =============================================================================
+# Uptime Kuma - PersistentVolume and PersistentVolumeClaim
+# =============================================================================
+#
+# 此檔案定義 MariaDB 的持久化存儲
+#
+# 注意事項：
+#   1. 根據您的 K8s 環境調整 storageClassName
+#   2. 確認存儲路徑和大小符合需求
+#   3. 生產環境建議使用動態 provisioning
+#
+# =============================================================================
+
+# =============================================================================
+# Option 1: 使用 hostPath (僅適用於開發/測試環境)
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: uptime-kuma-mariadb-pv
+  labels:
+    app.kubernetes.io/name: uptime-kuma
+    app.kubernetes.io/component: database
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /data/uptime-kuma/mariadb
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uptime-kuma-mariadb-pvc
+  namespace: uptime-kuma
+  labels:
+    app.kubernetes.io/name: uptime-kuma
+    app.kubernetes.io/component: database
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  selector:
+    matchLabels:
+      type: local
+      app.kubernetes.io/name: uptime-kuma
+
+# =============================================================================
+# Option 2: 使用動態 Provisioning (推薦用於生產環境)
+# =============================================================================
+# 如果您的 K8s 集群支援動態 provisioning，可以使用以下配置：
+#
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: uptime-kuma-mariadb-pvc
+#   namespace: uptime-kuma
+#   labels:
+#     app.kubernetes.io/name: uptime-kuma
+#     app.kubernetes.io/component: database
+# spec:
+#   # 使用預設 StorageClass 或指定特定的 StorageClass
+#   # storageClassName: standard  # GKE
+#   # storageClassName: gp2       # AWS EKS
+#   # storageClassName: default   # Azure AKS
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 10Gi
+
+# =============================================================================
+# Option 3: 使用 NFS (適用於共享存儲需求)
+# =============================================================================
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: uptime-kuma-mariadb-pv
+#   labels:
+#     app.kubernetes.io/name: uptime-kuma
+#     app.kubernetes.io/component: database
+# spec:
+#   capacity:
+#     storage: 10Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   persistentVolumeReclaimPolicy: Retain
+#   nfs:
+#     server: nfs-server.example.com
+#     path: /exports/uptime-kuma/mariadb
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: uptime-kuma-mariadb-pvc
+#   namespace: uptime-kuma
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 10Gi

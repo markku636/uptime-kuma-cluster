@@ -26,6 +26,7 @@
 | **Load Balancing** | ❌ None | ✅ OpenResty + Lua smart routing |
 | **Failover** | ❌ Service interruption when node fails | ✅ Auto-detect and migrate monitors |
 | **Horizontal Scaling** | ❌ Cannot scale | ✅ Dynamic node addition/removal |
+| **K8s Auto-Scaling** | ❌ None | ✅ HPA auto-scaling (CPU/Memory) |
 | **Monitor Distribution** | Single machine handles all monitors | Auto-distribute to least busy node |
 | **Node Health Check** | ❌ None | ✅ Periodic check, auto-mark anomalies |
 | **Development/Debug** | Direct connection | ✅ Fixed node routing (Cookie) |
@@ -51,6 +52,7 @@
 | [🔧 Module Description](#-module-description) | Detailed Lua module explanation |
 | [⚙️ Configuration](#️-configuration) | Environment variables and config files |
 | [🚀 Deployment Guide](#-deployment-guide) | Production deployment steps |
+| [☸️ K8s Deployment & Auto-Scaling](#️-kubernetes-deployment--auto-scaling) | Kubernetes HPA auto-scaling |
 | [📦 Directory Structure](#-directory-structure) | Project file descriptions |
 | [❓ FAQ](#-faq) | Troubleshooting |
 
@@ -705,6 +707,120 @@ nginx -s reload
 
 # Verify system status
 curl http://localhost/api/system-status
+```
+
+---
+
+## ☸️ Kubernetes Deployment & Auto-Scaling
+
+This project supports Kubernetes deployment with **HorizontalPodAutoscaler (HPA)** auto-scaling capability.
+
+### K8s Auto-Scaling Architecture
+
+```
+                    ┌─────────────────────────────────────┐
+                    │     HorizontalPodAutoscaler         │
+                    │   (CPU > 70% or Memory > 80%)       │
+                    └──────────────┬──────────────────────┘
+                                   │ scale up/down
+                                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     StatefulSet: uptime-kuma                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │ kuma-0   │  │ kuma-1   │  │ kuma-2   │  │ kuma-N   │  ...     │
+│  │ (Primary)│  │          │  │          │  │(Dynamically│         │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──Added)───┘          │
+│       │             │             │             │                 │
+│       └─────────────┴──────┬──────┴─────────────┘                 │
+│                            │                                      │
+│              ┌─────────────┼─────────────┐                        │
+│              │  NodeLifecycleManager     │                        │
+│              │  • Heartbeat (30s)        │                        │
+│              │  • Offline Detection (90s)│                        │
+│              │  • Auto Monitor Reassign  │                        │
+│              └─────────────┬─────────────┘                        │
+│                            ▼                                      │
+│                    ┌───────────────┐                              │
+│                    │   MariaDB     │                              │
+│                    │(Node Registry)│                              │
+│                    └───────────────┘                              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### How Auto-Scaling Works
+
+| Phase | Description |
+|:---|:---|
+| **Scale Up** | When CPU > 70% or Memory > 80%, HPA automatically adds Pods |
+| **Node Registration** | New Pod registers to database via `initializeFromEnv()` on startup |
+| **Dynamic Discovery** | OpenResty's `dynamic_upstream.lua` discovers new nodes from DB every 10s |
+| **Traffic Routing** | New node immediately joins load balancing and starts receiving requests |
+| **Scale Down** | When load decreases, HPA removes Pods, `NodeLifecycleManager` detects offline and reassigns Monitors |
+
+### K8s Deployment Methods
+
+**Method 1: Using Kustomize**
+```bash
+cd k8s
+kubectl apply -k .
+```
+
+**Method 2: Using Helm Chart**
+```bash
+# Deploy Secret and ConfigMap first
+kubectl apply -f k8s-deployment-files/secrets/secret.yaml
+kubectl apply -f k8s-deployment-files/configmaps/configmap.yaml
+
+# Deploy Helm Chart
+helm install uptime-kuma ./k8s-deployment-files/uptime-kuma -n uptime-kuma
+```
+
+### HPA Configuration
+
+```yaml
+# k8s/uptime-kuma/hpa.yaml
+spec:
+  minReplicas: 2          # Minimum replicas
+  maxReplicas: 10         # Maximum replicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          averageUtilization: 70   # CPU threshold
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          averageUtilization: 80   # Memory threshold
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 min stabilization for scale down
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 1 min stabilization for scale up
+```
+
+### Key Files
+
+| File | Description |
+|:---|:---|
+| `k8s/uptime-kuma/hpa.yaml` | HorizontalPodAutoscaler configuration |
+| `k8s/uptime-kuma/pdb.yaml` | PodDisruptionBudget (ensures at least 1 Pod available) |
+| `server/util/node-lifecycle.js` | Node lifecycle management (heartbeat, cleanup, reassign) |
+| `lua/dynamic_upstream.lua` | Dynamic node discovery module |
+| `server/util/cluster-env.js` | K8s/Docker Compose environment detection |
+
+### Manual Scaling
+
+```bash
+# Manually scale to 5 nodes
+kubectl scale statefulset uptime-kuma -n uptime-kuma --replicas=5
+
+# Check HPA status
+kubectl get hpa -n uptime-kuma
+
+# Watch node status
+kubectl get pods -n uptime-kuma -w
 ```
 
 ---

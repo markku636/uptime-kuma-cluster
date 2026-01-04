@@ -1,0 +1,40 @@
+# =============================================================================
+# ConfigMap for Uptime Kuma Application
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-config
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+data:
+  UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: {{ .Values.uptimeKuma.env.UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN | quote }}
+  UPTIME_KUMA_DB_TYPE: {{ .Values.uptimeKuma.env.UPTIME_KUMA_DB_TYPE | quote }}
+  UPTIME_KUMA_DB_HOSTNAME: {{ include "uptime-kuma.fullname" . }}-mariadb
+  UPTIME_KUMA_DB_PORT: {{ .Values.uptimeKuma.env.UPTIME_KUMA_DB_PORT | quote }}
+  UPTIME_KUMA_DB_NAME: {{ .Values.uptimeKuma.env.UPTIME_KUMA_DB_NAME | quote }}
+  API_RATE_LIMIT: {{ .Values.uptimeKuma.env.API_RATE_LIMIT | quote }}
+  K8S_MODE: {{ .Values.uptimeKuma.env.K8S_MODE | quote }}
+  UPTIME_KUMA_FORCE_MIGRATE: {{ .Values.uptimeKuma.env.UPTIME_KUMA_FORCE_MIGRATE | quote }}
+  NAMESPACE: {{ include "uptime-kuma.namespace" . }}
+  HEADLESS_SERVICE_NAME: {{ .Values.service.headless.name }}
+---
+# =============================================================================
+# ConfigMap for OpenResty
+# =============================================================================
+{{- if .Values.openresty.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-openresty-config
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.openresty.labels" . | nindent 4 }}
+data:
+  DB_HOST: {{ include "uptime-kuma.fullname" . }}-mariadb
+  DB_PORT: {{ .Values.openresty.env.DB_PORT | quote }}
+  DB_NAME: {{ .Values.openresty.env.DB_NAME | quote }}
+  EMMY_DEBUG_ENABLED: {{ .Values.openresty.env.EMMY_DEBUG_ENABLED | quote }}
+  CLUSTER_NODE_COUNT: {{ .Values.uptimeKuma.replicaCount | quote }}
+{{- end }}

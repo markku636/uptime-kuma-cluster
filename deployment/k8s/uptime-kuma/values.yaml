@@ -1,0 +1,193 @@
+# =============================================================================
+# Uptime Kuma Helm Chart - Values
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------------------------
+global:
+  namespace: uptime-kuma
+
+# -----------------------------------------------------------------------------
+# Uptime Kuma Application
+# -----------------------------------------------------------------------------
+uptimeKuma:
+  # Image settings
+  image:
+    repository: uptime-kuma-bun-cluster
+    tag: local
+    pullPolicy: IfNotPresent
+  
+  # Replica count for StatefulSet
+  replicaCount: 3
+  
+  # Container port
+  containerPort: 3001
+  
+  # Environment variables
+  env:
+    UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "true"
+    UPTIME_KUMA_DB_TYPE: "mariadb"
+    UPTIME_KUMA_DB_PORT: "3306"
+    UPTIME_KUMA_DB_NAME: "kuma"
+    API_RATE_LIMIT: "4000"
+    K8S_MODE: "true"
+    UPTIME_KUMA_FORCE_MIGRATE: "true"
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Liveness probe
+  livenessProbe:
+    httpGet:
+      path: /api/entry
+      port: 3001
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  # Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /api/entry
+      port: 3001
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Node selector (optional)
+  nodeSelector: {}
+  
+  # Tolerations (optional)
+  tolerations: []
+  
+  # Affinity (optional)
+  affinity: {}
+
+# -----------------------------------------------------------------------------
+# OpenResty Load Balancer
+# -----------------------------------------------------------------------------
+openresty:
+  enabled: true
+  
+  image:
+    repository: uptimekuma-openresty-bun
+    tag: standalone
+    pullPolicy: IfNotPresent
+  
+  replicaCount: 2
+  
+  containerPort: 80
+  
+  env:
+    DB_PORT: "3306"
+    DB_NAME: "kuma"
+    EMMY_DEBUG_ENABLED: "false"
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  
+  # Autoscaling (optional)
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# -----------------------------------------------------------------------------
+# MariaDB Database
+# -----------------------------------------------------------------------------
+mariadb:
+  enabled: true
+  
+  image:
+    repository: mariadb
+    tag: "10"
+    pullPolicy: IfNotPresent
+  
+  containerPort: 3306
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Persistence - 使用外部 PV/PVC
+  persistence:
+    enabled: true
+    existingClaim: ""  # 留空時會建立新的 PVC
+    storageClass: ""   # 使用預設 StorageClass
+    size: 10Gi
+    accessMode: ReadWriteOnce
+
+# -----------------------------------------------------------------------------
+# Service Configuration
+# -----------------------------------------------------------------------------
+service:
+  # Main service (OpenResty)
+  type: LoadBalancer
+  port: 80
+  # annotations: {}
+  
+  # Headless service for StatefulSet
+  headless:
+    name: uptime-kuma-headless
+
+# -----------------------------------------------------------------------------
+# Ingress Configuration (Optional)
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: uptime-kuma.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: uptime-kuma-tls
+  #    hosts:
+  #      - uptime-kuma.local
+
+# -----------------------------------------------------------------------------
+# HPA - Horizontal Pod Autoscaler (Optional)
+# -----------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# -----------------------------------------------------------------------------
+# ServiceAccount
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# RBAC
+# -----------------------------------------------------------------------------
+rbac:
+  create: true

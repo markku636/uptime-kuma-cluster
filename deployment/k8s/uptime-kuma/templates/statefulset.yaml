@@ -1,0 +1,95 @@
+# =============================================================================
+# Uptime Kuma StatefulSet
+# =============================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ .Values.service.headless.name }}
+  replicas: {{ .Values.uptimeKuma.replicaCount }}
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      {{- include "uptime-kuma.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "uptime-kuma.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "uptime-kuma.serviceAccountName" . }}
+      {{- end }}
+      {{- with .Values.uptimeKuma.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.uptimeKuma.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.uptimeKuma.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Wait for MariaDB to be ready
+        - name: wait-for-mariadb
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z {{ include "uptime-kuma.fullname" . }}-mariadb 3306; do echo waiting for mariadb; sleep 2; done;']
+      containers:
+        - name: uptime-kuma
+          image: "{{ .Values.uptimeKuma.image.repository }}:{{ .Values.uptimeKuma.image.tag }}"
+          imagePullPolicy: {{ .Values.uptimeKuma.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.uptimeKuma.containerPort }}
+              protocol: TCP
+          env:
+            # Node ID - 使用 Pod 名稱作為 Node ID
+            - name: UPTIME_KUMA_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: UPTIME_KUMA_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Node Host - 使用 Headless Service DNS 格式
+            - name: UPTIME_KUMA_NODE_HOST
+              value: "$(UPTIME_KUMA_NODE_ID).{{ .Values.service.headless.name }}.{{ include "uptime-kuma.namespace" . }}.svc.cluster.local:{{ .Values.uptimeKuma.containerPort }}"
+            # Database credentials from Secret
+            - name: UPTIME_KUMA_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.fullname" . }}-db-secret
+                  key: username
+            - name: UPTIME_KUMA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.fullname" . }}-db-secret
+                  key: password
+          envFrom:
+            - configMapRef:
+                name: {{ include "uptime-kuma.fullname" . }}-config
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          {{- with .Values.uptimeKuma.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.uptimeKuma.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.uptimeKuma.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          emptyDir: {}

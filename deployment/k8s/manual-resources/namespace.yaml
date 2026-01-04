@@ -1,0 +1,9 @@
+# =============================================================================
+# 建立 Namespace (如果尚未建立)
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uptime-kuma
+  labels:
+    app.kubernetes.io/name: uptime-kuma

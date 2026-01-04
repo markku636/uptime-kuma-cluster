@@ -1,0 +1,9 @@
+# =============================================================================
+# Uptime Kuma Namespace
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}

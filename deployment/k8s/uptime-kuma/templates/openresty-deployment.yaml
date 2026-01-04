@@ -1,0 +1,78 @@
+# =============================================================================
+# OpenResty Deployment (Load Balancer)
+# =============================================================================
+{{- if .Values.openresty.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-openresty
+  namespace: {{ include "uptime-kuma.namespace" . }}
+  labels:
+    {{- include "uptime-kuma.openresty.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.openresty.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "uptime-kuma.openresty.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "uptime-kuma.openresty.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+        # Wait for at least one Uptime Kuma node to be ready
+        - name: wait-for-uptime-kuma
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z {{ include "uptime-kuma.fullname" . }}-0.{{ .Values.service.headless.name }} 3001; do echo waiting for uptime-kuma; sleep 2; done;']
+      containers:
+        - name: openresty
+          image: "{{ .Values.openresty.image.repository }}:{{ .Values.openresty.image.tag }}"
+          imagePullPolicy: {{ .Values.openresty.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.openresty.containerPort }}
+              protocol: TCP
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.fullname" . }}-db-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.fullname" . }}-db-secret
+                  key: password
+            # K8s specific environment
+            - name: K8S_MODE
+              value: "true"
+            - name: NAMESPACE
+              value: {{ include "uptime-kuma.namespace" . }}
+            - name: HEADLESS_SERVICE_NAME
+              value: {{ .Values.service.headless.name }}
+            - name: UPTIME_KUMA_SERVICE_NAME
+              value: {{ include "uptime-kuma.fullname" . }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "uptime-kuma.fullname" . }}-openresty-config
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.openresty.containerPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.openresty.containerPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- with .Values.openresty.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

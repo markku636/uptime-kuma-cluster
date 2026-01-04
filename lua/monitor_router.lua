@@ -60,12 +60,24 @@ function _M.is_setup_complete()
     return is_complete
 end
 
--- 強制路由到主節點 (node1)
--- Force route to primary node (node1)
+-- 強制路由到主節點
+-- Force route to primary node
+-- 支援 Docker Compose 和 K8s 雙環境
 function _M.route_to_primary_node()
-    local host = config.cluster.node_host_prefix .. config.cluster.default_node
-    local port = config.cluster.default_port
-    ngx.log(ngx.INFO, "route_to_primary_node: setup not complete, routing to primary node ", host, ":", port)
+    -- 使用 config 輔助函數構建 host
+    local full_host = config.build_node_host(config.cluster.default_node)
+    local host, port
+    
+    if full_host then
+        host, port = full_host:match("^([^:]+):(%d+)$")
+        port = tonumber(port) or config.cluster.default_port
+    else
+        -- Fallback
+        host = config.cluster.node_host_prefix .. config.cluster.default_node
+        port = config.cluster.default_port
+    end
+    
+    ngx.log(ngx.INFO, "route_to_primary_node: setup not complete, routing to primary node ", host, ":", port, " (env: ", config.environment, ")")
     return host, port
 end
 
@@ -321,29 +333,34 @@ end
 
 -- 動態為當前請求選擇節點（提供給 balancer_by_lua_block 使用）
 -- 邏輯：依據各節點目前的 monitor 數量（active=1），優先選擇「監控數量最少」且 online 的節點
+-- 支援 Docker Compose 和 K8s 雙環境
 -- 回傳值：host, port
 function _M.pick_node_for_request()
     local db_conn, err = db_connect()
     if not db_conn then
-        ngx.log(ngx.ERR, "pick_node_for_request: cannot connect to DB, fallback to ", config.cluster.default_node)
+        ngx.log(ngx.ERR, "pick_node_for_request: cannot connect to DB, fallback to default node")
+        -- 使用 config 輔助函數 fallback
+        local fallback_host = config.build_node_host(config.cluster.default_node)
+        if fallback_host then
+            local host, port = fallback_host:match("^([^:]+):(%d+)$")
+            return host, tonumber(port) or config.cluster.default_port
+        end
         return config.cluster.node_host_prefix .. config.cluster.default_node, config.cluster.default_port
     end
 
     -- 依據目前 active monitor 數量選擇最空閒的 online 節點
-    -- 說明：
-    --   - 僅考慮 status = 'online' 的節點
-    --   - 使用 LEFT JOIN + COUNT(m.id) 統計各節點 active=1 的監控數量
-    --   - ORDER BY monitor_count ASC, node_id ASC：優先選擇監控最少的節點；數量相同時依 node_id 穩定排序
+    -- 同時查詢 node.host 欄位，以支援 K8s 環境
     local sql = [[
         SELECT
             n.node_id,
+            n.host,
             COUNT(m.id) AS monitor_count
         FROM node n
         LEFT JOIN monitor m
             ON m.node_id = n.node_id
            AND m.active = 1
         WHERE n.status = 'online'
-        GROUP BY n.node_id
+        GROUP BY n.node_id, n.host
         ORDER BY monitor_count ASC, n.node_id ASC
         LIMIT 1
     ]]
@@ -352,33 +369,40 @@ function _M.pick_node_for_request()
     db_conn:close()
 
     if not res or #res == 0 then
-        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes with capacity found, fallback to ", config.cluster.default_node)
+        ngx.log(ngx.ERR, "pick_node_for_request: no online nodes found, fallback to default")
+        local fallback_host = config.build_node_host(config.cluster.default_node)
+        if fallback_host then
+            local host, port = fallback_host:match("^([^:]+):(%d+)$")
+            return host, tonumber(port) or config.cluster.default_port
+        end
         return config.cluster.node_host_prefix .. config.cluster.default_node, config.cluster.default_port
     end
 
     local row = res[1]
-    local node_id = row.node_id or config.cluster.default_node
     local monitor_count = tonumber(row.monitor_count) or 0
-
-    -- node_id 例如 "node2" -> 映射到 Docker 服務名稱
-    local host = config.cluster.node_host_prefix .. node_id
-    local port = config.cluster.default_port
+    
+    -- 使用 config 輔助函數取得 host 和 port
+    -- 優先使用資料庫中儲存的 host
+    local host, port = config.get_node_host_port(row)
 
     ngx.log(ngx.INFO,
         "pick_node_for_request: routed to ", host, ":", port,
-        " with current monitor_count=", monitor_count
+        " (node_id=", row.node_id, ", monitors=", monitor_count, ", env=", config.environment, ")"
     )
     return host, port
 end
 
 -- DNS 解析函數（在 access 階段使用）
 -- balancer_by_lua* 階段需要 IP 地址，不能使用 hostname
+-- 支援 Docker Compose 和 K8s 雙環境 DNS
 local function resolve_host(hostname)
     local resolver = require "resty.dns.resolver"
+    
+    -- 使用 config 中配置的 DNS 伺服器
     local r, err = resolver:new{
-        nameservers = {"127.0.0.11"},  -- Docker 內建 DNS
-        retrans = 3,
-        timeout = 2000,
+        nameservers = config.dns.servers,
+        retrans = config.dns.retrans,
+        timeout = config.dns.timeout,
     }
     
     if not r then
